@@ -1,6 +1,70 @@
 # backend – REST API
 
-Ghi chú thiết kế và kế hoạch cho phần Backend. Chưa có code.
+## Chạy backend
+
+FastAPI + SQLAlchemy + PostgreSQL. Quy ước API cho FE và các feature: [docs/API_CONVENTIONS.md](docs/API_CONVENTIONS.md).
+
+### Chạy test (không cần Docker)
+
+```bash
+cd backend
+py -3.12 -m venv .venv
+.venv\Scripts\python -m pip install -r requirements-dev.txt    # macOS/Linux: .venv/bin/python
+.venv\Scripts\python -m pytest -q
+```
+
+Test dùng SQLite in-memory, không cần PostgreSQL.
+
+### Chạy cả server bằng Docker
+
+```bash
+# ở thư mục gốc repo
+cp .env.example .env          # rồi sửa JWT_SECRET, GITHUB_TOKEN...
+docker compose up --build -d db backend
+docker compose exec backend python -m scripts.seed    # tạo user demo@devradar.dev / demo1234 (chạy lại nhiều lần không sao)
+```
+
+- Khi khởi động, container tự chạy `alembic upgrade head` rồi mới chạy API.
+- Swagger: <http://localhost:8080/docs> – bấm **Authorize** và dán `access_token` để thử API cần đăng nhập.
+- Kiểm tra: <http://localhost:8080/health> → `{"status":"ok"}`.
+- **Cổng bị chiếm?** Nếu máy đã có PostgreSQL (5432) hoặc app khác (8080), đặt trong `.env`
+  `DB_PORT=5433` và `BACKEND_PORT=8081` rồi dùng <http://localhost:8081>. Bên trong Docker vẫn là 5432 / 8080.
+- Dừng: `docker compose down` (thêm `-v` nếu muốn xoá luôn dữ liệu DB).
+
+### Chạy API trực tiếp trên máy (không Docker cho backend)
+
+```bash
+docker compose up -d db
+cd backend
+set DATABASE_URL=postgresql+psycopg://devradar:change_me@localhost:5432/devradar   # PowerShell: $env:DATABASE_URL="..."
+.venv\Scripts\alembic upgrade head
+.venv\Scripts\python -m scripts.seed
+.venv\Scripts\uvicorn app.main:app --reload --port 8080
+```
+
+### Cấu trúc thư mục
+
+```
+app/
+  main.py          tạo app, gắn router /api/v1, xử lý lỗi, CORS, scheduler
+  core/            config (.env), security (bcrypt, JWT), errors (định dạng lỗi), pagination
+  db/              Base, engine, SessionLocal, get_db
+  models/          toàn bộ bảng
+  schemas/         pydantic request/response
+  api/deps.py      get_current_user
+  api/routes/      mỗi file một router
+  services/        gọi GitHub / AI engine, logic nghiệp vụ
+  jobs/            cron job (APScheduler)
+alembic/           migration DB
+scripts/seed.py    dữ liệu demo
+tests/             pytest
+```
+
+Đổi model → tạo migration mới: `alembic revision --autogenerate -m "..."` (chạy khi DB đang bật), đọc lại file sinh ra rồi `alembic upgrade head`.
+
+---
+
+Ghi chú thiết kế và kế hoạch cho phần Backend.
 
 > Môn học chấm **app Flutter**. Backend không được chấm trực tiếp nhưng là thứ FE và AI phải dựa vào.
 > Mục tiêu: **API ổn định, có sớm, dễ dùng** – không cần kiến trúc phức tạp.
