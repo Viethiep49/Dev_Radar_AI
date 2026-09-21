@@ -112,18 +112,19 @@ Tất cả router **đã được gắn sẵn trong `app/main.py`** – không a
 | `api/routes/notes.py` | `/notes` | personal |
 | `api/routes/learning.py` | `/learning` | personal |
 | `api/routes/stats.py` | `/stats` | personal |
-| `api/routes/watchlist.py` | `/watchlist` | notifications |
-| `api/routes/notifications.py` | `/notifications` | notifications |
-| `api/routes/chat.py` | `/chat` | AI |
+| `api/routes/watchlist.py` | `/watchlist` | AI & thông báo |
+| `api/routes/notifications.py` | `/notifications` | AI & thông báo |
+| `api/routes/chat.py` | `/chat` | AI & thông báo |
 
 File dùng chung khác theo feature:
 
 | Feature | Service | Job | Khác |
 |---|---|---|---|
 | repos | `services/github_client.py`, `services/repo_service.py` | `jobs/repo_jobs.py` | `seed_repos()` trong `scripts/seed.py` |
-| AI | `services/ai_client.py` | `jobs/ai_jobs.py` (sinh tóm tắt → bảng `repo_summaries`) | |
-| notifications | – | `jobs/release_jobs.py` | |
+| AI & thông báo | `services/ai_client.py` | `jobs/ai_jobs.py` (sinh tóm tắt → bảng `repo_summaries`), `jobs/release_jobs.py` | |
 | personal | – | – | |
+
+Dùng chung (mọi feature được import, không ai tự đổi): `schemas/repo_brief.py` (`RepoBrief`), `services/repo_service.py` → `get_repo_or_404`, chữ ký hàm trong `services/github_client.py` (feature repos viết phần thân).
 
 Tóm tắt AI được lưu trong `repo_summaries`; router `/repos` chỉ **đọc** bảng này để trả về.
 
