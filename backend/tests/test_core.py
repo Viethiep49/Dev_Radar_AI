@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.pagination import Page, PageParams, paginate
 from app.db.session import get_db
-from app.jobs import repo_jobs, scheduler
+from app.jobs import ai_jobs, release_jobs, repo_jobs, scheduler
 from app.models import User
 from app.schemas.auth import UserOut
 
@@ -43,11 +43,14 @@ def test_scheduler_registers_jobs(monkeypatch):
     def dummy_job():
         pass
 
+    # Replace every feature's job list so the test does not depend on real jobs.
     monkeypatch.setattr(
         repo_jobs,
         "JOBS",
         [{"id": "dummy", "func": dummy_job, "trigger": "interval", "kwargs": {"hours": 6}}],
     )
+    monkeypatch.setattr(ai_jobs, "JOBS", [])
+    monkeypatch.setattr(release_jobs, "JOBS", [])
     sched = scheduler.build_scheduler()
     assert [job.id for job in sched.get_jobs()] == ["dummy"]
 
