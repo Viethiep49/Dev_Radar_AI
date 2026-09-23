@@ -32,10 +32,51 @@ services:
 
   # Bỏ comment khi ai-engine/Dockerfile đã có
   # (khi đó đặt AI_ENGINE_URL=http://ai-engine:8000 trong .env)
-  # ai-engine:
-  #   build: ./ai-engine
-  #   environment:
-  #     LLM_API_KEY: ${LLM_API_KEY}
+  ai-engine:
+    build: ./ai-engine
+    ports:
+      - "8000:8000"
+    environment:
+      - OLLAMA_URL=http://ollama:11434
+      - DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}
+    depends_on:
+      ollama:
+        condition: service_started
+      db:
+        condition: service_healthy
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: devradar_ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    # Thiết lập ép dùng GPU Nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # Container phụ: Tự động tải model Qwen khi chạy lần đầu
+  ollama-pull:
+    image: curlimages/curl:latest
+    container_name: devradar_ollama_pull
+    depends_on:
+      - ollama
+    command: >
+      sh -c "
+        echo 'Đang chờ Ollama khởi động...';
+        sleep 5;
+        echo 'Bắt đầu tải model qwen2.5:7b (sẽ mất vài phút tùy mạng)...';
+        curl -X POST http://ollama:11434/api/pull -d '{\"name\": \"qwen2.5:7b\"}';
+        echo '\nĐã tải xong!';
+      "
 
 volumes:
   db_data:
+  ollama_data:
+
