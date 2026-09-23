@@ -77,7 +77,7 @@ def chat(req: ChatRequest):
                 SELECT path, content 
                 FROM repo_embeddings 
                 WHERE repo_id = :repo_id 
-                ORDER BY embedding <=> :q_vector::vector 
+                ORDER BY embedding <=> CAST(:q_vector AS vector) 
                 LIMIT 3
             """),
             {"repo_id": req.repo_id, "q_vector": str(question_vector)}
