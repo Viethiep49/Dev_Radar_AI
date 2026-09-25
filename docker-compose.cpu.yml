@@ -1,0 +1,15 @@
+# CPU override for machines without an NVIDIA GPU.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.cpu.yml up
+#
+# It drops the GPU reservation from the `ollama` service (the base file keeps
+# GPU as the default because a sub-30s /chat answer needs one) and lets Ollama
+# fall back to CPU. Responses will be much slower.
+
+services:
+  ollama:
+    deploy:
+      resources:
+        reservations:
+          devices: []
