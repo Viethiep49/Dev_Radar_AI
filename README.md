@@ -11,28 +11,26 @@
 | `ai-engine/` | Service AI (chạy bằng Docker, chỉ backend gọi vào) | AI |
 | `docker-compose.yml` | Chạy DB + backend + AI engine cùng lúc | Backend |
 
-```
-Flutter app ──HTTP──▶ backend ──▶ ai-engine
-                        │
-                        └──▶ database
-```
+
 
 ## Chạy server (backend + AI + DB)
 
 Yêu cầu: Docker Desktop (Windows cần bật WSL2).
 
-```bash
-cp .env.example .env      # rồi điền giá trị thật
-docker compose up --build
-```
+
+
+### GPU
+
+AI engine dùng Ollama để sinh câu trả lời. Để `/chat` trả lời **dưới 30 giây** (khớp timeout của backend), mặc định compose yêu cầu **GPU NVIDIA**.
+
+- **Máy có GPU NVIDIA**: cần cài driver NVIDIA + [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html), rồi chạy lệnh ở trên.
+- **Máy không có GPU (chỉ để thử)**: dùng override CPU — Ollama sẽ chạy bằng CPU và **chậm hơn nhiều**:
+
+
 
 ## Chạy app Flutter
 
-```bash
-cd mobile
-flutter pub get
-flutter run
-```
+
 
 Địa chỉ backend khi chạy app:
 - Android emulator: `http://10.0.2.2:8080`

@@ -30,29 +30,39 @@ services:
       db:
         condition: service_healthy
 
-  # Bỏ comment khi ai-engine/Dockerfile đã có
-  # (khi đó đặt AI_ENGINE_URL=http://ai-engine:8000 trong .env)
+  # Internal service: only the backend talks to it, so the port is not
+  # published to the host (use `expose`).
   ai-engine:
     build: ./ai-engine
-    ports:
-      - "8000:8000"
+    expose:
+      - "8000"
     environment:
-      - OLLAMA_URL=http://ollama:11434
-      - DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}
+      OLLAMA_URL: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b}
+      OLLAMA_TIMEOUT_SECONDS: ${OLLAMA_TIMEOUT_SECONDS:-25}
+      MIN_SIMILARITY: ${MIN_SIMILARITY:-0.35}
+      DATABASE_URL: postgresql://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}
     depends_on:
       ollama:
-        condition: service_started
+        condition: service_healthy
       db:
         condition: service_healthy
 
+  # GPU by default: the target is a /chat answer under 30s, so Ollama must use
+  # an NVIDIA GPU. On a machine without a GPU, use the CPU override:
+  #   docker compose -f docker-compose.yml -f docker-compose.cpu.yml up
   ollama:
     image: ollama/ollama:latest
     container_name: devradar_ollama
-    ports:
-      - "11434:11434"
+    expose:
+      - "11434"
     volumes:
       - ollama_data:/root/.ollama
-    # Thiết lập ép dùng GPU Nvidia
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
     deploy:
       resources:
         reservations:
@@ -61,22 +71,22 @@ services:
               count: 1
               capabilities: [gpu]
 
-  # Container phụ: Tự động tải model Qwen khi chạy lần đầu
+  # Pulls the model once Ollama is healthy (first run can take a few minutes).
   ollama-pull:
     image: curlimages/curl:latest
     container_name: devradar_ollama_pull
     depends_on:
-      - ollama
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b}
     command: >
       sh -c "
-        echo 'Đang chờ Ollama khởi động...';
-        sleep 5;
-        echo 'Bắt đầu tải model qwen2.5:7b (sẽ mất vài phút tùy mạng)...';
-        curl -X POST http://ollama:11434/api/pull -d '{\"name\": \"qwen2.5:7b\"}';
-        echo '\nĐã tải xong!';
+        echo 'Đang tải model '$$OLLAMA_MODEL' (sẽ mất vài phút tùy mạng)...';
+        curl -sS -X POST http://ollama:11434/api/pull -d '{\"name\": \"'$$OLLAMA_MODEL'\"}';
+        echo '\\nĐã tải xong!';
       "
 
 volumes:
   db_data:
   ollama_data:
-

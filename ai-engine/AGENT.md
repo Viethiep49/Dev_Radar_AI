@@ -46,8 +46,8 @@
 | **Server** | Uvicorn `>=0.27.1` | Runs on port 8000 |
 | **Validation** | Pydantic v2 `>=2.8.2` | Request/response models |
 | **HTTP Client** | httpx `>=0.27.0` | Calls Ollama (timeout 120 s) |
-| **Embedding** | `sentence‑transformers` `>=2.5.1` | Model **all‑MiniLM‑L6‑v2** (384‑dim) – runs locally, CPU only |
-| **LLM** | Ollama container (`qwen2.5:7b`) | GPU‑enabled via NVIDIA driver |
+| **Embedding** | `sentence‑transformers` `>=2.5.1` | Model **paraphrase‑multilingual‑MiniLM‑L12‑v2** (384‑dim) – runs locally, CPU only, multilingual (Vietnamese) |
+| **LLM** | Ollama container (`qwen2.5:7b`, env `OLLAMA_MODEL`) | GPU required by default (30s target); CPU via `docker-compose.cpu.yml` |
 | **Vector DB** | PostgreSQL 16 + pgvector `>=0.2.5` | Index `ivfflat` on `vector_cosine_ops` |
 | **ORM** | SQLAlchemy `>=2.0.29` + raw SQL | Simple `text()` statements for vector ops |
 | **Driver** | psycopg2‑binary `>=2.9.9` | PostgreSQL driver |
@@ -85,7 +85,7 @@ POST /index
 
 ### Processing steps
 1. **Delete old chunks** for the given `repo_id` (`DELETE FROM repo_embeddings WHERE repo_id = :repo_id`).
-2. **Chunking** – `RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)`; preferred separators `"\n\n" → "\n" → " " → ""`.
+2. **Chunking** – `RecursiveCharacterTextSplitter(chunk_size=1500, chunk_overlap=150)` (characters ≈ 500 tokens); preferred separators `"\n\n" → "\n" → " " → ""`.
 3. **Embedding** – `embedder.encode(chunks).tolist()` producing a list of 384‑dim vectors.
 4. **Insert** each `(repo_id, path, chunk, embedding)` into `repo_embeddings`.
 5. Commit and return total number of stored chunks.
@@ -280,6 +280,9 @@ ai-engine/
 | Variable | Default | Description |
 |---|---|---|
 | `OLLAMA_URL` | `http://ollama:11434/api/generate` | Ollama endpoint (auto‑normalized to end with `/api/generate`). |
+| `OLLAMA_MODEL` | `qwen2.5:7b` | Model used for summarize/chat. |
+| `OLLAMA_TIMEOUT_SECONDS` | `25` | HTTP timeout for Ollama. Must stay below the backend's `AI_TIMEOUT_SECONDS` (30s). |
+| `MIN_SIMILARITY` | `0.35` | Minimum cosine similarity for a chunk to be used as chat context. |
 | `DATABASE_URL` | `postgresql://devradar:change_me@db:5432/devradar` | PostgreSQL connection string (used by SQLAlchemy). |
 
 ---
@@ -293,14 +296,14 @@ CREATE TABLE repo_embeddings (
     repo_id   INTEGER NOT NULL,
     path      TEXT NOT NULL,                 -- file path inside repository
     content   TEXT NOT NULL,                 -- raw chunk text
-    embedding vector(384) NOT NULL           -- all‑MiniLM‑L6‑v2 output
+    embedding vector(384) NOT NULL           -- paraphrase‑multilingual‑MiniLM‑L12‑v2 output
 );
 
 -- Index for fast cosine similarity search (ivfflat)
 CREATE INDEX repo_embeddings_embedding_idx ON repo_embeddings
     USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
 ```
-> The migration is managed by the backend service; AI Engine only reads/writes rows.
+> The table belongs to the AI engine schema. The backend's alembic migration does **not** create it; the AI engine creates it automatically at startup via `app.core.database.ensure_schema()` (`CREATE EXTENSION/TABLE/INDEX IF NOT EXISTS`).
 
 ---
 
@@ -333,21 +336,21 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 The embedding model is loaded on startup:
 ```python
 print("Đang tải model embedding local...")
-embedder = SentenceTransformer('all-MiniLM-L6-v2')
+embedder = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
 ```
-The first run will download the model (~90 MB) and cache it inside the container.
+The first run will download the model (~470 MB) and cache it inside the container.
 
 ---
 
 ## Limitations & Future Improvements
 | Current limitation | Suggested improvement |
 |---|---|
-| Fixed 120 s timeout for Ollama calls | Add exponential back‑off with retries, surface a clear error to the client. |
-| No similarity threshold – always returns 3 chunks | Introduce a cosine‑distance cutoff (e.g., 0.8) and return *"Không tìm thấy trong tài liệu"* when all distances exceed it. |
-| Model embedding loaded at cold start | Bake the model into the Docker image or mount a persistent cache volume to reduce cold‑start latency. |
+| ~~Fixed 120 s timeout for Ollama calls~~ | ✅ Fixed: timeout is now `OLLAMA_TIMEOUT_SECONDS` (default 25s), below the backend's 30s. |
+| ~~No similarity threshold – always returns 3 chunks~~ | ✅ Fixed: `/chat` filters by `MIN_SIMILARITY` and answers *"Không tìm thấy trong tài liệu"* when nothing passes. |
+| ~~Model embedding loaded at cold start~~ | ✅ Fixed: lazy singleton + the model is baked into the Docker image. |
 | History limited to 6 messages | Persist conversation state in Redis or a DB for multi‑turn sessions exceeding 6 messages. |
 | No rate‑limiting / authentication on the API | Add FastAPI middleware (e.g., `slowapi`) to cap requests per minute and enforce API keys. |
-| JSON parsing failures when Ollama returns stray text | Add a tolerant post‑processor that extracts a JSON block with regex before `json.loads`. |
+| ~~JSON parsing failures when Ollama returns stray text~~ | ✅ Improved: invalid JSON returns `502` and specific HTTP errors are handled in `llm_client`. |
 
 ---
 
