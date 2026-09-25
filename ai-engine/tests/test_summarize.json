@@ -1,0 +1,5 @@
+{
+  "repo_id": 1,
+  "full_name": "test/repo",
+  "readme": "# FastAPI Project\n\nThis is a sample project using FastAPI, SQLAlchemy, and Docker.\n\n## Installation\n\n```bash\ndocker compose up -d\n```\n\n## Usage\n\nNavigate to `http://localhost:8000/docs` to see the API endpoints."
+}
