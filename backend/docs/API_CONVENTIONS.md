@@ -30,6 +30,9 @@ Swagger đầy đủ (tự sinh): `http://localhost:8080/docs`.
 | POST | `/api/v1/auth/refresh` | `{refresh_token}` → `200 {access_token, refresh_token, token_type}` |
 | GET | `/api/v1/auth/me` | user đang đăng nhập |
 | POST | `/api/v1/auth/device-tokens` | `{token, platform: android\|ios\|web}` → `201`, lưu FCM token (gửi lại cùng token thì cập nhật, không tạo trùng) |
+| GET | `/api/v1/auth/oauth/providers` | Login Google/GitHub nào đang bật + `client_id`, `redirect_uri`, `scope` công khai để app bắt đầu đăng nhập (không bao giờ trả secret) |
+| POST | `/api/v1/auth/google` | `{id_token}` (ID token từ `google_sign_in`) → `200` cùng dạng như login |
+| POST | `/api/v1/auth/github` | `{code, code_verifier?}` (code GitHub trả về `GITHUB_REDIRECT_URI`, PKCE verifier) → `200` cùng dạng như login |
 
 ## 3. Định dạng lỗi
 
