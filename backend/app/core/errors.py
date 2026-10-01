@@ -26,6 +26,7 @@ class ErrorCode:
     CONFLICT = "CONFLICT"
     UPSTREAM_ERROR = "UPSTREAM_ERROR"  # GitHub / AI engine returned an error
     UPSTREAM_TIMEOUT = "UPSTREAM_TIMEOUT"  # GitHub / AI engine answered too slowly
+    NOT_CONFIGURED = "NOT_CONFIGURED"  # feature needs keys that are not set in .env (e.g. OAuth)
     INTERNAL_ERROR = "INTERNAL_ERROR"
 
 

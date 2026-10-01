@@ -20,12 +20,16 @@ from app.schemas.auth import (
     AuthResponse,
     DeviceTokenOut,
     DeviceTokenRequest,
+    GitHubLoginRequest,
+    GoogleLoginRequest,
     LoginRequest,
+    OAuthProvidersOut,
     RefreshRequest,
     RegisterRequest,
     TokenResponse,
     UserOut,
 )
+from app.services import oauth_service
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -60,9 +64,33 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
 def login(body: LoginRequest, db: Session = Depends(get_db)):
     user = db.scalar(select(User).where(User.email == body.email.lower()))
     # Same message for "no such email" and "wrong password", so nobody can guess emails.
-    if user is None or not verify_password(body.password, user.password_hash):
+    # Accounts created with Google/GitHub have no password and must use that login.
+    if user is None or user.password_hash is None or not verify_password(body.password, user.password_hash):
         raise AppError(401, ErrorCode.UNAUTHORIZED, "Wrong email or password")
     return _auth_response(user)
+
+
+# ---------- login with Google / GitHub (see app/services/oauth_service.py) ----------
+
+
+@router.get("/oauth/providers", response_model=OAuthProvidersOut)
+def oauth_providers():
+    """Which social logins are enabled + the public IDs the app needs (never the secrets)."""
+    return oauth_service.providers_info()
+
+
+@router.post("/google", response_model=AuthResponse)
+def login_with_google(body: GoogleLoginRequest, db: Session = Depends(get_db)):
+    """Body: {"id_token": "<Google ID token from google_sign_in>"}."""
+    identity = oauth_service.google_identity(body.id_token)
+    return _auth_response(oauth_service.login_with_identity(db, identity))
+
+
+@router.post("/github", response_model=AuthResponse)
+def login_with_github(body: GitHubLoginRequest, db: Session = Depends(get_db)):
+    """Body: {"code": "<code from the GitHub redirect>", "code_verifier": "<PKCE verifier>"}."""
+    identity = oauth_service.github_identity(body.code, body.code_verifier)
+    return _auth_response(oauth_service.login_with_identity(db, identity))
 
 
 @router.post("/refresh", response_model=TokenResponse)

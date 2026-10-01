@@ -27,8 +27,9 @@ ENSURE_SCHEMA_SQL = [
     )
     """,
     "CREATE INDEX IF NOT EXISTS repo_embeddings_repo_id_idx ON repo_embeddings (repo_id)",
-    "CREATE INDEX IF NOT EXISTS repo_embeddings_embedding_idx "
-    "ON repo_embeddings USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100)",
+    # ivfflat has been removed because it scans clusters before filtering by repo_id,
+    # which can cause 0 chunks to be returned for small datasets.
+    # If the dataset grows very large, consider using HNSW with hnsw.iterative_scan = strict_order.
 ]
 
 

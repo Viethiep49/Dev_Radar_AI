@@ -1,14 +1,14 @@
 """Chunking of README/docs before embedding.
 
 `RecursiveCharacterTextSplitter` counts **characters**, not tokens. A chunk of
-1500 characters is roughly 300-400 words (~500 tokens), which matches the size
-described in AGENT.md / the backend contract.
+450 characters is roughly 100-150 words, which keeps the token count safely
+under the `max_seq_length = 128` of the model `paraphrase-multilingual-MiniLM-L12-v2`.
 """
 
 try:
     from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-    chunker = RecursiveCharacterTextSplitter(chunk_size=1500, chunk_overlap=150)
+    chunker = RecursiveCharacterTextSplitter(chunk_size=450, chunk_overlap=50)
 except ImportError:
 
     class _SimpleTextSplitter:
@@ -33,4 +33,4 @@ except ImportError:
                 chunks.append(current)
             return chunks
 
-    chunker = _SimpleTextSplitter(chunk_size=1500, chunk_overlap=150)
+    chunker = _SimpleTextSplitter(chunk_size=450, chunk_overlap=50)

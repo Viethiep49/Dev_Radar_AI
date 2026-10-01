@@ -16,7 +16,8 @@ class User(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)  # stored lower-case
-    password_hash: Mapped[str] = mapped_column(String(255))
+    # None for accounts created with Google/GitHub login (they have no password).
+    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     display_name: Mapped[str] = mapped_column(String(100))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
@@ -37,6 +38,24 @@ class UserPreference(Base):
     value: Mapped[str] = mapped_column(String(100))
 
     user: Mapped["User"] = relationship(back_populates="preferences")
+
+
+class OAuthAccount(Base):
+    """A Google/GitHub identity linked to a user. One user can have several.
+
+    The provider's user id (Google "sub", GitHub numeric id) is the stable key;
+    the email is only kept for display because the user can change it.
+    """
+
+    __tablename__ = "oauth_accounts"
+    __table_args__ = (UniqueConstraint("provider", "provider_user_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    provider: Mapped[str] = mapped_column(String(20))  # "google" | "github"
+    provider_user_id: Mapped[str] = mapped_column(String(255))
+    email: Mapped[str | None] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class DeviceToken(Base):

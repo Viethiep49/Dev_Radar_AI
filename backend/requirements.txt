@@ -10,3 +10,5 @@ PyJWT==2.14.0
 bcrypt==5.0.0
 httpx==0.28.1
 APScheduler==3.11.3
+google-auth==2.58.1
+requests==2.34.2

@@ -11,7 +11,7 @@ OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
 # backend gets a proper error instead of timing out first.
 OLLAMA_TIMEOUT_SECONDS = float(os.getenv("OLLAMA_TIMEOUT_SECONDS", "25"))
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://devradar:change_me@db:5432/devradar")
+DATABASE_URL = os.environ["DATABASE_URL"]
 
 # Minimum cosine similarity (1 - cosine distance) for a chunk to be used as
 # context. Chunks below it are ignored, so the model can answer "not found".

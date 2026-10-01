@@ -4,7 +4,7 @@ from app.models.chat import ChatMessage
 from app.models.notification import Notification
 from app.models.personal import Collection, CollectionItem, Note, UserRepo, Watchlist
 from app.models.repo import Repo, RepoRelease, RepoStarSnapshot, RepoSummary
-from app.models.user import DeviceToken, User, UserPreference
+from app.models.user import DeviceToken, OAuthAccount, User, UserPreference
 
 __all__ = [
     "ChatMessage",
@@ -13,6 +13,7 @@ __all__ = [
     "DeviceToken",
     "Note",
     "Notification",
+    "OAuthAccount",
     "Repo",
     "RepoRelease",
     "RepoStarSnapshot",

@@ -15,6 +15,23 @@ class Settings(BaseSettings):
 
     github_token: str = ""
 
+    # ---- Login with Google / GitHub (leave empty = that login is disabled) ----
+    # Google: OAuth client IDs whose ID tokens we accept, comma separated.
+    # Put the *Web* client ID first (the Flutter app passes it as serverClientId);
+    # add the Android/iOS client IDs too if tokens are issued for them.
+    google_client_ids: str = ""
+    # GitHub OAuth App (github.com/settings/developers). The secret stays on the server.
+    github_client_id: str = ""
+    github_client_secret: str = ""
+    # Must equal the "Authorization callback URL" of the GitHub OAuth App,
+    # e.g. a custom scheme the app catches: devradar://oauth/github
+    github_redirect_uri: str = ""
+    oauth_timeout_seconds: int = 10
+
+    @property
+    def google_client_id_list(self) -> list[str]:
+        return [value.strip() for value in self.google_client_ids.split(",") if value.strip()]
+
     ai_engine_url: str = ""
     ai_timeout_seconds: int = 30
 

@@ -5,10 +5,25 @@ from fastapi.testclient import TestClient
 from app.main import app
 
 
+import httpx
+from unittest.mock import patch
+
 def test_health(client):
-    response = client.get("/health")
-    assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    original_get = httpx.get
+    
+    def mock_get(url, *args, **kwargs):
+        if "api/tags" in str(url):
+            from unittest.mock import MagicMock
+            m = MagicMock()
+            m.status_code = 200
+            m.json.return_value = {"models": [{"name": "qwen2.5:7b"}]}
+            return m
+        return original_get(url, *args, **kwargs)
+        
+    with patch("app.main.httpx.get", side_effect=mock_get):
+        response = client.get("/health")
+        assert response.status_code == 200
+        assert response.json()["status"] == "ok"
 
 
 def test_routes_are_registered():
@@ -64,7 +79,7 @@ def test_index(client, mock_embedder, mock_db):
 
     # The vector must be written in pgvector format: [0.1,0.2,0.3] (no spaces).
     insert_params = mock_db.execute.call_args_list[-1].args[1]
-    assert insert_params["embedding"] == "[0.1,0.2,0.3]"
+    assert insert_params[0]["embedding"] == "[0.1,0.2,0.3]"
 
 
 def test_chat(client, mock_embedder, mock_db, mock_ollama):
