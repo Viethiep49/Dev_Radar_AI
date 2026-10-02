@@ -51,13 +51,22 @@ services:
         condition: service_healthy
       db:
         condition: service_healthy
+      ollama-pull:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # GPU by default: the target is a /chat answer under 30s, so Ollama must use
   # an NVIDIA GPU. On a machine without a GPU, use the CPU override:
   #   docker compose -f docker-compose.yml -f docker-compose.cpu.yml up
   ollama:
-    image: ollama/ollama:latest
+    image: ollama/ollama:0.5.7
     container_name: devradar_ollama
+    environment:
+      OLLAMA_KEEP_ALIVE: -1
     expose:
       - "11434"
     volumes:
@@ -87,7 +96,7 @@ services:
     command: >
       sh -c "
         echo 'Đang tải model '$$OLLAMA_MODEL' (sẽ mất vài phút tùy mạng)...';
-        curl -sS -X POST http://ollama:11434/api/pull -d '{\"name\": \"'$$OLLAMA_MODEL'\"}';
+        curl -f -sS -X POST http://ollama:11434/api/pull -d '{\"name\": \"'$$OLLAMA_MODEL'\", \"stream\": false}';
         echo '\\nĐã tải xong!';
       "
 

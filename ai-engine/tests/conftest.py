@@ -16,10 +16,14 @@ def client():
 @pytest.fixture
 def mock_embedder():
     with patch("app.api.v1.embedder") as mock:
-        # Mock encode to return a fake numpy array-like object with .tolist()
-        mock_result = MagicMock()
-        mock_result.tolist.return_value = [0.1, 0.2, 0.3]
-        mock.encode.return_value = mock_result
+        def fake_encode(text_or_list):
+            mock_res = MagicMock()
+            if isinstance(text_or_list, list):
+                mock_res.tolist.return_value = [[0.1, 0.2, 0.3] for _ in text_or_list]
+            else:
+                mock_res.tolist.return_value = [0.1, 0.2, 0.3]
+            return mock_res
+        mock.encode.side_effect = fake_encode
         yield mock
 
 
