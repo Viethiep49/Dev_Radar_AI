@@ -1,0 +1,7 @@
+﻿fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+cairosvg
+pillow
+piper-tts==1.8.0
