@@ -20,7 +20,7 @@ def _get_client() -> httpx.Client:
     return _client
 
 
-def call_ollama(prompt: str, json_format: bool = False) -> str:
+def call_ollama(prompt: str, json_format: bool = False, timeout: float | None = None) -> str:
     payload = {
         "model": OLLAMA_MODEL,
         "prompt": prompt,
@@ -30,10 +30,11 @@ def call_ollama(prompt: str, json_format: bool = False) -> str:
         payload["format"] = "json"
 
     try:
-        response = _get_client().post(OLLAMA_URL, json=payload)
+        effective_timeout = timeout if timeout is not None else OLLAMA_TIMEOUT_SECONDS
+        response = _get_client().post(OLLAMA_URL, json=payload, timeout=effective_timeout)
         response.raise_for_status()
     except httpx.TimeoutException as exc:
-        logger.warning("Ollama timed out after %ss", OLLAMA_TIMEOUT_SECONDS)
+        logger.warning("Ollama timed out after %ss", effective_timeout)
         raise HTTPException(status_code=504, detail="Ollama phản hồi quá lâu, vui lòng thử lại.") from exc
     except httpx.HTTPError as exc:
         logger.warning("Ollama request failed: %s", exc)

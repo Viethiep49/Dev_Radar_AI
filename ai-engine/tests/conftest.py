@@ -1,3 +1,9 @@
+import os
+
+# app.core.config reads DATABASE_URL at import time; unit tests never connect
+# to it (the engine is lazy and every DB access is mocked).
+os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost:5432/test")
+
 import pytest
 from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
@@ -7,10 +13,18 @@ from app.main import app
 
 @pytest.fixture
 def client():
-    # ensure_schema() runs on startup; patch it so tests do not need a real DB.
-    with patch("app.main.ensure_schema"):
+    # Start-up must not need a real DB, the embedding model or Ollama:
+    # ensure_schema() and the warm-up thread are patched out.
+    with patch("app.main.ensure_schema"), patch("app.main._warm_up"):
         with TestClient(app) as c:
             yield c
+
+
+@pytest.fixture
+def mock_health_db():
+    """engine.connect() used by /health, without a real database."""
+    with patch("app.main.engine") as engine:
+        yield engine
 
 
 @pytest.fixture

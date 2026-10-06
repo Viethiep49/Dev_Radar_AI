@@ -8,7 +8,7 @@ from sqlalchemy import text
 
 from app.api.v1 import router as v1_router
 from app.core.database import ensure_schema, engine
-from app.core.config import OLLAMA_URL, OLLAMA_MODEL
+from app.core.config import OLLAMA_URL, OLLAMA_MODEL, WARMUP_TIMEOUT_SECONDS
 from app.services.embedder import get_model
 from app.services.llm_client import call_ollama
 
@@ -19,7 +19,9 @@ def _warm_up():
         logger.info("Warming up embedding model...")
         get_model()
         logger.info("Warming up Ollama with a short prompt...")
-        call_ollama("hello")
+        # Loading a 7b model the first time can take minutes on CPU, so the
+        # warm-up gets its own long timeout (requests keep OLLAMA_TIMEOUT_SECONDS).
+        call_ollama("hello", timeout=WARMUP_TIMEOUT_SECONDS)
         logger.info("Warmup complete.")
     except Exception as e:
         logger.error(f"Warmup failed: {e}")
