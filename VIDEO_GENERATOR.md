@@ -4,11 +4,11 @@ The `video-engine` service is now implemented and exposes a REST API for generat
 
 ## 1. Backend Integration
 
-The `video-engine` is exposed locally within the docker-compose network at `http://video-engine:8000`.
+The `video-engine` is exposed locally within the docker-compose network at `http://video-engine:9000`.
 
 ### 1.1 Triggering Video Generation
 
-To generate a video, send a `POST` request to `http://video-engine:8000/render` with a `VideoSpec` JSON payload.
+To generate a video, send a `POST` request to `http://video-engine:9000/render` with a `VideoSpec` JSON payload.
 
 **Example Request:**
 ```json
