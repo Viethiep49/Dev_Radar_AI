@@ -15,7 +15,6 @@ def concat_wavs(entries: list[tuple[Path, float]], out_path: Path, gap_seconds: 
     sampwidth = None
     framerate = None
     
-    # Verify matches
     for wav_path, _ in entries:
         with wave.open(str(wav_path), 'rb') as w:
             if nchannels is None:
@@ -26,7 +25,6 @@ def concat_wavs(entries: list[tuple[Path, float]], out_path: Path, gap_seconds: 
                 if w.getnchannels() != nchannels or w.getsampwidth() != sampwidth or w.getframerate() != framerate:
                     raise ValueError(f"Mismatched sample rates in {wav_path}")
 
-    # Write
     total_frames = 0
     with wave.open(str(out_path), 'wb') as out_w:
         out_w.setnchannels(nchannels)
@@ -48,36 +46,46 @@ def concat_wavs(entries: list[tuple[Path, float]], out_path: Path, gap_seconds: 
                 
     return total_frames / framerate
 
-def build_ffconcat(entries: list[tuple[Path, float]]) -> str:
-    lines = ["ffconcat version 1.0"]
-    for path, duration in entries:
-        # Convert path to posix for ffconcat compatibility
-        posix_path = path.as_posix()
-        lines.append(f"file '{posix_path}'")
-        lines.append(f"duration {duration}")
-    if entries:
-        last_path = entries[-1][0].as_posix()
-        lines.append(f"file '{last_path}'")
-    return "\n".join(lines)
-
-def ffmpeg_args(concat_path: Path, audio_path: Path, out_path: Path, size: tuple[int, int], fps: int) -> list[str]:
+def ffmpeg_args(entries: list[tuple[Path, float]], audio_path: Path, out_path: Path, size: tuple[int, int], fps: int) -> list[str]:
     w, h = size
-    return [
-        "-y",
-        "-f", "concat",
-        "-safe", "0",
-        "-i", concat_path.as_posix(),
-        "-i", audio_path.as_posix(),
+    
+    args = ["-y"]
+    
+    for img_path, _ in entries:
+        args.extend(["-i", img_path.as_posix()])
+        
+    args.extend(["-i", audio_path.as_posix()])
+    
+    filter_chains = []
+    concat_inputs = ""
+    for i, (_, duration) in enumerate(entries):
+        frames = int(duration * fps)
+        # Slow zoom in: z='1.0+on*0.0005'
+        zoom_expr = "1.0+on*0.0005"
+        x_expr = "iw/2-(iw/zoom)/2"
+        y_expr = "ih/2-(ih/zoom)/2"
+        
+        chain = f"[{i}:v]scale={w}:{h},zoompan=z='{zoom_expr}':d={frames}:s={w}x{h}:fps={fps}:x='{x_expr}':y='{y_expr}'[v{i}]"
+        filter_chains.append(chain)
+        concat_inputs += f"[v{i}]"
+        
+    concat_filter = f"{concat_inputs}concat=n={len(entries)}:v=1:a=0[outv]"
+    filter_chains.append(concat_filter)
+    
+    filter_complex = ";".join(filter_chains)
+    
+    args.extend([
+        "-filter_complex", filter_complex,
+        "-map", "[outv]",
+        "-map", f"{len(entries)}:a",
         "-c:v", "libx264",
         "-preset", "veryfast",
         "-crf", "23",
         "-pix_fmt", "yuv420p",
-        "-r", str(fps),
-        "-s", f"{w}x{h}",
         "-c:a", "aac",
         "-b:a", "128k",
-        "-ar", "44100",
         "-movflags", "+faststart",
         "-shortest",
         out_path.as_posix()
-    ]
+    ])
+    return args

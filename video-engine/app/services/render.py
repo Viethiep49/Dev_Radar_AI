@@ -7,7 +7,7 @@ from app.core.config import settings
 from app.schemas.spec import VideoSpec, RenderResult
 from app.services.layout import render_slide_png, CANVAS
 from app.services.tts import TTSClient
-from app.services.timeline import slide_durations, concat_wavs, build_ffconcat, ffmpeg_args, GAP_SECONDS
+from app.services.timeline import slide_durations, concat_wavs, ffmpeg_args, GAP_SECONDS
 
 def render_job(spec: VideoSpec, out_dir: Path) -> RenderResult:
     size = CANVAS[spec.quality]
@@ -42,12 +42,9 @@ def render_job(spec: VideoSpec, out_dir: Path) -> RenderResult:
         concat_audio_path = tmp / "joined.wav"
         total_duration = concat_wavs(entries, concat_audio_path, gap_seconds=GAP_SECONDS)
         
-        ffconcat_path = tmp / "slides.ffconcat"
-        ffconcat_path.write_text(build_ffconcat(ffconcat_entries), encoding="utf-8")
-        
         out_mp4 = out_dir / f"{spec.job_id}.mp4"
         
-        args = ffmpeg_args(ffconcat_path, concat_audio_path, out_mp4, size, settings.fps)
+        args = ffmpeg_args(ffconcat_entries, concat_audio_path, out_mp4, size, settings.fps)
         args.insert(0, settings.ffmpeg_bin)
         
         subprocess.run(args, check=True)

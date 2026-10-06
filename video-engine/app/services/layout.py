@@ -5,7 +5,6 @@ from app.schemas.spec import Slide
 
 CANVAS = {"720p": (720, 1280), "1080p": (1080, 1920)}
 
-
 def safe_insets(size: tuple[int, int]) -> dict[str, int]:
     w, h = size
     return {
@@ -15,9 +14,7 @@ def safe_insets(size: tuple[int, int]) -> dict[str, int]:
         "right": round(w * 0.167),
     }
 
-
 SAFE_INSET = safe_insets(CANVAS["720p"])
-
 
 def wrap_text(
     text: str, font_path: str, font_size: int, max_width: int, max_lines: int
@@ -39,7 +36,6 @@ def wrap_text(
             if current_line:
                 lines.append(" ".join(current_line))
                 current_line = []
-
             current_chunk = ""
             for char in word:
                 if get_width(current_chunk + char) <= max_width:
@@ -74,71 +70,105 @@ def wrap_text(
 def slide_to_svg(slide: Slide, index: int, total: int, size: tuple[int, int]) -> str:
     w, h = size
     insets = safe_insets(size)
-
-    bg_color = "#1E1E1E"
+    
     text_color = "#FFFFFF"
-
+    
     svg = [
         f'<svg width="{w}" height="{h}" xmlns="http://www.w3.org/2000/svg">',
-        f'<rect width="{w}" height="{h}" fill="{bg_color}" />',
+        '<defs>',
+        '  <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">',
+        '    <stop offset="0%" stop-color="#0F2027"/>',
+        '    <stop offset="50%" stop-color="#203A43"/>',
+        '    <stop offset="100%" stop-color="#2C5364"/>',
+        '  </linearGradient>',
+        '</defs>',
+        f'<rect width="{w}" height="{h}" fill="url(#bg)" />',
     ]
 
+    # Progress bar
     bar_width = (index + 1) / total * w
     svg.append(f'<rect x="0" y="0" width="{bar_width}" height="{h * 0.01}" fill="#4CAF50" />')
 
-    x = insets["left"]
-    y = insets["top"] + 50
+    # Card layout
+    card_margin = insets["left"]
+    card_w = w - card_margin * 2
+    card_h = h - insets["top"] - insets["bottom"] - 100
+    card_y = insets["top"] + 100
+    
+    svg.append(f'<rect x="{card_margin}" y="{card_y}" width="{card_w}" height="{card_h}" rx="32" fill="rgba(255, 255, 255, 0.07)" stroke="rgba(255, 255, 255, 0.15)" stroke-width="2"/>')
 
-    svg.append(f'<text x="{x}" y="{y}" fill="{text_color}" font-family="Be Vietnam Pro" font-size="24">{index + 1}/{total}</text>')
-    y += 50
+    cx = w / 2
 
     def escape(s: str) -> str:
         return html.escape(s)
+        
+    def add_text_lines(text: str, y_start: int, font_size: int, font_weight: str, fill: str, max_lines: int) -> int:
+        lines = wrap_text(text, "", font_size, card_w - 60, max_lines)
+        cy = y_start
+        for line in lines:
+            svg.append(f'<text x="{cx}" y="{cy}" fill="{fill}" font-family="Be Vietnam Pro" font-size="{font_size}" font-weight="{font_weight}" text-anchor="middle">{escape(line)}</text>')
+            cy += font_size + 15
+        return cy
 
     if slide.kind == "hook":
-        svg.append(f'<text x="{x}" y="{y}" fill="{text_color}" font-family="Be Vietnam Pro" font-size="48" font-weight="bold">{escape(slide.title)}</text>')
+        y = card_y + card_h / 2 - 40
+        y = add_text_lines(slide.title, y, 64, "bold", text_color, 2)
         if slide.subtitle:
-            y += 60
-            svg.append(f'<text x="{x}" y="{y}" fill="{text_color}" font-family="Be Vietnam Pro" font-size="32">{escape(slide.subtitle)}</text>')
+            y += 20
+            add_text_lines(slide.subtitle, y, 40, "normal", "#A0AAB2", 2)
 
     elif slide.kind == "stat":
-        svg.append(f'<text x="{x}" y="{y}" fill="{text_color}" font-family="Be Vietnam Pro" font-size="32">{escape(slide.label)}</text>')
-        y += 60
-        svg.append(f'<text x="{x}" y="{y}" fill="{text_color}" font-family="Be Vietnam Pro" font-size="64" font-weight="bold">{escape(slide.value)}</text>')
+        y = card_y + card_h / 2 - 60
+        y = add_text_lines(slide.label, y, 40, "normal", "#A0AAB2", 2)
+        y += 20
+        svg.append(f'<text x="{cx}" y="{y}" fill="{text_color}" font-family="Be Vietnam Pro" font-size="80" font-weight="bold" text-anchor="middle">{escape(slide.value)}</text>')
+        y += 90
         if slide.unit:
-            svg.append(f'<text x="{x + 200}" y="{y}" fill="{text_color}" font-family="Be Vietnam Pro" font-size="32">{escape(slide.unit)}</text>')
+            svg.append(f'<text x="{cx}" y="{y}" fill="#4CAF50" font-family="Be Vietnam Pro" font-size="40" font-weight="bold" text-anchor="middle">{escape(slide.unit)}</text>')
 
     elif slide.kind == "list":
-        svg.append(f'<text x="{x}" y="{y}" fill="{text_color}" font-family="Be Vietnam Pro" font-size="48" font-weight="bold">{escape(slide.title)}</text>')
-        y += 60
+        y = card_y + 80
+        y = add_text_lines(slide.title, y, 56, "bold", text_color, 2)
+        y += 40
         for item in slide.items:
-            svg.append(f'<text x="{x}" y="{y}" fill="{text_color}" font-family="Be Vietnam Pro" font-size="32">• {escape(item)}</text>')
-            y += 50
+            # Left align list items slightly offset from center
+            svg.append(f'<text x="{card_margin + 60}" y="{y}" fill="{text_color}" font-family="Be Vietnam Pro" font-size="36" font-weight="normal">• {escape(item)}</text>')
+            y += 60
 
     elif slide.kind == "repo":
-        svg.append(f'<text x="{x}" y="{y}" fill="{text_color}" font-family="Be Vietnam Pro" font-size="36" font-weight="bold">{escape(slide.full_name)}</text>')
-        y += 50
+        y = card_y + 100
+        y = add_text_lines(slide.full_name, y, 48, "bold", text_color, 2)
+        
+        y += 30
         if slide.description:
-            svg.append(f'<text x="{x}" y="{y}" fill="{text_color}" font-family="Be Vietnam Pro" font-size="28">{escape(slide.description[:100])}</text>')
-            y += 40
+            y = add_text_lines(slide.description[:120], y, 32, "normal", "#E0E0E0", 3)
+            
+        y += 40
         if slide.language:
-            svg.append(f'<text x="{x}" y="{y}" fill="#888888" font-family="Be Vietnam Pro" font-size="28">{escape(slide.language)}</text>')
-            y += 40
+            svg.append(f'<text x="{cx}" y="{y}" fill="#888888" font-family="Be Vietnam Pro" font-size="32" text-anchor="middle">Lập trình bằng {escape(slide.language)}</text>')
+            y += 60
+            
+        # Draw star
         stars_str = f"{slide.stars:,}".replace(",", ".")
-        svg.append(f'<text x="{x}" y="{y}" fill="#FFD700" font-family="Be Vietnam Pro" font-size="28">⭐ {stars_str}</text>')
-        if slide.stars_gained:
-            gained_str = f"+{slide.stars_gained:,}".replace(",", ".")
-            svg.append(f'<text x="{x + 200}" y="{y}" fill="#4CAF50" font-family="Be Vietnam Pro" font-size="28">{gained_str}</text>')
+        gained_str = f"(+{slide.stars_gained:,})".replace(",", ".") if slide.stars_gained else ""
+        
+        star_path = "M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"
+        # Translate to center-ish
+        svg.append(f'<g transform="translate({cx - 150}, {y - 45}) scale(1.5)">')
+        svg.append(f'<path d="{star_path}" fill="#FFD700" />')
+        svg.append('</g>')
+        
+        svg.append(f'<text x="{cx}" y="{y}" fill="#FFD700" font-family="Be Vietnam Pro" font-size="40" font-weight="bold" text-anchor="middle">{stars_str} <tspan fill="#4CAF50" font-size="32">{gained_str}</tspan></text>')
 
     elif slide.kind == "outro":
-        svg.append(f'<text x="{x}" y="{y}" fill="{text_color}" font-family="Be Vietnam Pro" font-size="48" font-weight="bold">{escape(slide.title)}</text>')
+        y = card_y + card_h / 2 - 40
+        y = add_text_lines(slide.title, y, 64, "bold", text_color, 2)
         if slide.subtitle:
-            y += 60
-            svg.append(f'<text x="{x}" y="{y}" fill="{text_color}" font-family="Be Vietnam Pro" font-size="32">{escape(slide.subtitle)}</text>')
+            y += 20
+            add_text_lines(slide.subtitle, y, 40, "normal", "#A0AAB2", 2)
 
     svg.append("</svg>")
     return "\n".join(svg)
-
 
 def render_slide_png(slide: Slide, index: int, total: int, size: tuple[int, int]) -> bytes:
     svg_str = slide_to_svg(slide, index, total, size)
