@@ -100,6 +100,18 @@ services:
         echo '\\nĐã tải xong!';
       "
 
+  video-engine:
+    build: ./video-engine
+    profiles:
+      - video
+    ports:
+      - "8000:9000"
+    volumes:
+      - video_data:/data/videos
+    environment:
+      OUTPUT_DIR: /data/videos
+
 volumes:
   db_data:
   ollama_data:
+  video_data:
