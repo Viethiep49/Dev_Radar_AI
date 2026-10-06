@@ -26,7 +26,7 @@ Tài liệu này quy định rõ nhiệm vụ, luồng hoạt động và đặc
 
 Video Engine không bộc lộ ra Internet, chỉ được truy cập nội bộ thông qua hostname `video-engine`.
 
-### `POST http://video-engine:8000/render`
+### `POST http://video-engine:9000/render`
 
 **Mô tả:** Endpoint đồng bộ, tiếp nhận kịch bản (`VideoSpec`) và trả về kết quả sinh file.
 

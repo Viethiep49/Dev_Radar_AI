@@ -104,8 +104,8 @@ services:
     build: ./video-engine
     profiles:
       - video
-    ports:
-      - "8000:9000"
+    expose:
+      - "9000"
     volumes:
       - video_data:/data/videos
     environment:
