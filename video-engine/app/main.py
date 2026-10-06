@@ -1,7 +1,10 @@
-﻿import subprocess
+import subprocess
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from app.core.config import settings
+from anyio import to_thread
+from app.schemas.spec import VideoSpec, RenderResult
+from app.services.render import render_job
 
 app = FastAPI()
 
@@ -26,3 +29,8 @@ def health():
     if body['status'] == 'ok':
         return JSONResponse(status_code=200, content=body)
     return JSONResponse(status_code=503, content=body)
+
+@app.post("/render", response_model=RenderResult)
+async def create_render(spec: VideoSpec):
+    settings.output_dir.mkdir(parents=True, exist_ok=True)
+    return await to_thread.run_sync(render_job, spec, settings.output_dir)
