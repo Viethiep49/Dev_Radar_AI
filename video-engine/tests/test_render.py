@@ -22,6 +22,7 @@ def _write_wav(path: Path, seconds: float, rate: int = 22050) -> None:
 
 def test_render_job_orchestrates_a_spec_into_a_video_file_and_result(tmp_path, monkeypatch):
     def fake_synthesize(text, voice, cache_dir):
+        cache_dir.mkdir(parents=True, exist_ok=True)
         p = cache_dir / f"test_{hash(text)}.wav"
         _write_wav(p, 1.0)
         return p
