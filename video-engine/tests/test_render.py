@@ -21,13 +21,16 @@ def _write_wav(path: Path, seconds: float, rate: int = 22050) -> None:
 
 
 def test_render_job_orchestrates_a_spec_into_a_video_file_and_result(tmp_path, monkeypatch):
-    class FakeTTS:
-        def synthesize_slide(self, slide, out_dir):
-            p = out_dir / f"{id(slide)}.wav"
-            _write_wav(p, 1.0)
-            return p
+    def fake_synthesize(text, voice, cache_dir):
+        p = cache_dir / f"test_{hash(text)}.wav"
+        _write_wav(p, 1.0)
+        return p
 
-    monkeypatch.setattr("app.services.render.TTSClient", FakeTTS)
+    def fake_wav_duration(path):
+        return 1.0
+
+    monkeypatch.setattr("app.services.render.synthesize", fake_synthesize)
+    monkeypatch.setattr("app.services.render.wav_duration", fake_wav_duration)
     
     run_args = []
     def fake_run(*args, **kwargs):

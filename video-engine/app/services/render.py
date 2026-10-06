@@ -1,31 +1,27 @@
+import os
 import subprocess
 from pathlib import Path
 from tempfile import TemporaryDirectory
-import wave
 
 from app.core.config import settings
 from app.schemas.spec import VideoSpec, RenderResult
 from app.services.layout import render_slide_png, CANVAS
-from app.services.tts import TTSClient
+from app.services.tts import synthesize, wav_duration
 from app.services.timeline import slide_durations, concat_wavs, ffmpeg_args, GAP_SECONDS
 
 def render_job(spec: VideoSpec, out_dir: Path) -> RenderResult:
     size = CANVAS[spec.quality]
-    tts_client = TTSClient()
     
     with TemporaryDirectory() as tmp_str:
         tmp = Path(tmp_str)
         
         audio_paths = []
-        for slide in spec.slides:
-            audio_path = tts_client.synthesize_slide(slide, tmp)
-            audio_paths.append(audio_path)
-            
         raw_audio_seconds = []
-        for path in audio_paths:
-            with wave.open(str(path), 'rb') as w:
-                raw_audio_seconds.append(w.getnframes() / w.getframerate())
-                
+        for slide in spec.slides:
+            audio_path = synthesize(slide.narration, settings.voice, settings.cache_dir)
+            audio_paths.append(audio_path)
+            raw_audio_seconds.append(wav_duration(audio_path))
+            
         durations = slide_durations(raw_audio_seconds)
         
         entries = []
@@ -42,12 +38,15 @@ def render_job(spec: VideoSpec, out_dir: Path) -> RenderResult:
         concat_audio_path = tmp / "joined.wav"
         total_duration = concat_wavs(entries, concat_audio_path, gap_seconds=GAP_SECONDS)
         
-        out_mp4 = out_dir / f"{spec.job_id}.mp4"
+        tmp_mp4 = tmp / "out.mp4"
         
-        args = ffmpeg_args(ffconcat_entries, concat_audio_path, out_mp4, size, settings.fps)
+        args = ffmpeg_args(ffconcat_entries, concat_audio_path, tmp_mp4, size, settings.fps)
         args.insert(0, settings.ffmpeg_bin)
         
         subprocess.run(args, check=True)
+        
+        out_mp4 = out_dir / f"{spec.job_id}.mp4"
+        os.replace(tmp_mp4, out_mp4)
         
         return RenderResult(
             path=str(out_mp4),
