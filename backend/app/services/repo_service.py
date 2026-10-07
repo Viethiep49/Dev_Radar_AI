@@ -1,5 +1,6 @@
 """Business logic for repos. get_repo_or_404 is shared by every feature; the rest is filled by the repos feature."""
 
+import logging
 from collections import Counter
 from datetime import date, datetime, timedelta, timezone
 
@@ -21,6 +22,10 @@ from app.models import (
     Watchlist,
 )
 from app.schemas.repos import RepoDetailOut, RepoOut, RepoSummaryOut, StarPoint
+from app.services import github_client
+from app.services.github_client import GitHubError
+
+logger = logging.getLogger(__name__)
 
 # "Hot" label: many new stars this week, or a young repo that is already popular.
 HOT_MIN_STARS_GAINED_7D = 100
@@ -225,54 +230,36 @@ def get_repo_detail(db: Session, user: User, repo_id: int) -> RepoDetailOut:
         .order_by(Collection.id)
     ).all()
 
-    readme_content = repo.readme
-    if not readme_content or not readme_content.strip() or len(readme_content.strip()) < 1200:
-        try:
-            from app.services import github_client
-            fetched = github_client.get_readme(repo.full_name)
-            if fetched and len(fetched.strip()) > len(readme_content or ""):
-                repo.readme = fetched
-                db.commit()
-                readme_content = fetched
-        except Exception:
-            pass
-
-    if not readme_content or not readme_content.strip():
-        topics_str = ", ".join(f"`{t}`" for t in (repo.topics or [])) if repo.topics else "Chưa phân loại"
-        homepage_line = f"- 🌐 [Trang chủ dự án]({repo.homepage})\n" if repo.homepage else ""
-        readme_content = (
-            f"# {repo.name}\n\n"
-            f"> {repo.description or 'Repository mã nguồn mở nổi bật trên GitHub.'}\n\n"
-            "## 📖 Giới thiệu dự án\n"
-            f"Dự án **{repo.name}** được phát triển và duy trì bởi **{repo.owner}**.\n\n"
-            "## 📊 Thông tin tổng quan\n"
-            f"- **Chủ sở hữu**: `{repo.owner}`\n"
-            f"- **Ngôn ngữ chính**: `{repo.language or 'Đa ngôn ngữ'}`\n"
-            f"- **Số sao GitHub**: ⭐ **{repo.stars:,}**\n"
-            f"- **Lượt Fork**: 🍴 **{repo.forks:,}**\n"
-            f"- **Vấn đề mở (Issues)**: 🐞 **{repo.open_issues:,}**\n"
-            f"- **Chủ đề (Topics)**: {topics_str}\n\n"
-            "## 🚀 Hướng dẫn cài đặt & Khởi động nhanh\n"
-            "Để bắt đầu sử dụng hoặc đóng góp cho dự án, bạn có thể clone mã nguồn về máy:\n\n"
-            "```bash\n"
-            f"git clone {repo.html_url}.git\n"
-            f"cd {repo.name}\n"
-            "```\n\n"
-            "## 🔗 Liên kết chính thức\n"
-            f"- 🌐 [Xem mã nguồn trên GitHub]({repo.html_url})\n"
-            f"{homepage_line}"
-        )
+    readme = _ensure_readme(db, repo)
 
     return RepoDetailOut(
         **base.model_dump(),
-        readme=readme_content,
-        readme_available=bool(readme_content and readme_content.strip()),
+        readme=readme or None,
+        readme_available=bool(readme and readme.strip()),
         summary=RepoSummaryOut.model_validate(summary) if summary else None,
         is_watched=watch_id is not None,
         learning_status=learning_status,
         collection_ids=list(collection_ids),
     )
 
+
+def _ensure_readme(db: Session, repo: Repo) -> str | None:
+    """Return the stored README, fetching it from GitHub once if the crawler has not yet.
+
+    repo.readme is None  -> never fetched (e.g. the crawler ran out of its README budget)
+    repo.readme == ""    -> GitHub said the repo has no README; do not ask again
+    A failed request (rate limit, network) is not saved, so the next view retries.
+    """
+    if repo.readme is not None:
+        return repo.readme
+    try:
+        fetched = github_client.get_readme(repo.full_name)
+    except GitHubError as exc:
+        logger.warning("Could not fetch README of %s: %s", repo.full_name, exc)
+        return None
+    repo.readme = fetched or ""
+    db.commit()
+    return repo.readme
 
 
 def get_summary_or_404(db: Session, repo_id: int) -> RepoSummary:

@@ -1,4 +1,4 @@
-"""Auth endpoints: register, login, refresh token, current user, device tokens."""
+"""Auth endpoints: register, login, refresh token, current user, password, avatar, device tokens."""
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
@@ -118,7 +118,11 @@ def change_password(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    if current_user.password_hash and not verify_password(body.old_password, current_user.password_hash):
+    """Body: {"old_password": "...", "new_password": "..."}. old_password may be omitted
+    only by Google/GitHub accounts that have no password yet."""
+    if current_user.password_hash is not None and not (
+        body.old_password and verify_password(body.old_password, current_user.password_hash)
+    ):
         raise AppError(400, ErrorCode.VALIDATION_ERROR, "Mật khẩu hiện tại không chính xác")
     current_user.password_hash = hash_password(body.new_password)
     db.commit()
@@ -131,7 +135,7 @@ def update_avatar(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    current_user.avatar_url = body.avatar_url.strip()
+    current_user.avatar_url = body.avatar_url
     db.commit()
     db.refresh(current_user)
     return current_user

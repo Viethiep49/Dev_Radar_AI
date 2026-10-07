@@ -17,10 +17,33 @@ from app.models import (
     UserRepo,
     Watchlist,
 )
+from app.services import repo_service
+from app.services.github_client import GitHubError
 from app.services.repo_service import today_utc
 
 URL = "/api/v1/repos"
 _github_ids = itertools.count(1)
+
+
+class FakeReadme:
+    """Replaces github_client.get_readme so the detail endpoint never calls the real GitHub."""
+
+    def __init__(self, result=None):
+        self.result = result
+        self.calls = []
+
+    def __call__(self, full_name):
+        self.calls.append(full_name)
+        if isinstance(self.result, Exception):
+            raise self.result
+        return self.result
+
+
+@pytest.fixture(autouse=True)
+def fake_readme(monkeypatch):
+    fake = FakeReadme()
+    monkeypatch.setattr(repo_service.github_client, "get_readme", fake)
+    return fake
 
 
 def make_repo(db, full_name: str, **fields) -> Repo:
@@ -222,6 +245,7 @@ def test_detail_without_user_data(client, auth_headers, sample_repos):
     body = response.json()
     assert body["full_name"] == "fastapi/fastapi"
     assert body["readme_available"] is False
+    assert body["readme"] is None
     assert body["summary"] is None
     assert body["is_watched"] is False
     assert body["learning_status"] is None
@@ -265,6 +289,53 @@ def test_detail_with_user_flags(client, auth_headers, db, user, sample_repos):
     # Other user's learning status is not visible to us
     other_repo = client.get(f"{URL}/{sample_repos['fastapi'].id}", headers=auth_headers).json()
     assert other_repo["learning_status"] is None
+
+
+def test_detail_fetches_missing_readme_once(client, auth_headers, db, sample_repos, fake_readme):
+    repo = sample_repos["fastapi"]
+    fake_readme.result = "# FastAPI"
+
+    for _ in range(2):
+        body = client.get(f"{URL}/{repo.id}", headers=auth_headers).json()
+        assert body["readme"] == "# FastAPI"
+        assert body["readme_available"] is True
+
+    assert fake_readme.calls == ["fastapi/fastapi"]  # saved after the first view
+    db.refresh(repo)
+    assert repo.readme == "# FastAPI"
+
+
+def test_detail_repo_without_readme_is_not_fetched_again(client, auth_headers, db, sample_repos, fake_readme):
+    repo = sample_repos["fastapi"]
+    for _ in range(2):
+        body = client.get(f"{URL}/{repo.id}", headers=auth_headers).json()
+        assert body["readme"] is None
+        assert body["readme_available"] is False
+
+    assert len(fake_readme.calls) == 1
+    db.refresh(repo)
+    assert repo.readme == ""  # "" = GitHub has no README, None = not fetched yet
+
+
+def test_detail_readme_github_error_is_retried_later(client, auth_headers, db, sample_repos, fake_readme):
+    repo = sample_repos["fastapi"]
+    fake_readme.result = GitHubError("rate limited")
+
+    response = client.get(f"{URL}/{repo.id}", headers=auth_headers)
+    assert response.status_code == 200
+    assert response.json()["readme_available"] is False
+    db.refresh(repo)
+    assert repo.readme is None
+
+
+def test_detail_stored_readme_is_not_refetched(client, auth_headers, db, sample_repos, fake_readme):
+    repo = sample_repos["fastapi"]
+    repo.readme = "short"
+    db.commit()
+
+    body = client.get(f"{URL}/{repo.id}", headers=auth_headers).json()
+    assert body["readme"] == "short"
+    assert fake_readme.calls == []
 
 
 def test_detail_not_found(client, auth_headers):

@@ -1,13 +1,15 @@
 from fastapi.testclient import TestClient
 
-from app.core.security import create_refresh_token
-from app.models import DeviceToken
+from app.core.security import create_refresh_token, verify_password
+from app.models import DeviceToken, User
 
 REGISTER_URL = "/api/v1/auth/register"
 LOGIN_URL = "/api/v1/auth/login"
 REFRESH_URL = "/api/v1/auth/refresh"
 ME_URL = "/api/v1/auth/me"
 DEVICE_URL = "/api/v1/auth/device-tokens"
+PASSWORD_URL = "/api/v1/auth/change-password"
+AVATAR_URL = "/api/v1/auth/avatar"
 
 
 def assert_error(response, status_code: int, code: str):
@@ -148,7 +150,63 @@ def test_device_token_rejects_unknown_platform(client, auth_headers):
 
 # ---------- uniform error format ----------
 
-def test_unknown_url_uses_error_format(client):
+# ---------- change password ----------
+
+def test_change_password_ok(client, db, user, auth_headers):
+    response = client.post(
+        PASSWORD_URL, headers=auth_headers, json={"old_password": "secret123", "new_password": "newpass1"}
+    )
+    assert response.status_code == 200
+    assert client.post(LOGIN_URL, json={"email": "user@example.com", "password": "newpass1"}).status_code == 200
+    assert client.post(LOGIN_URL, json={"email": "user@example.com", "password": "secret123"}).status_code == 401
+
+
+def test_change_password_wrong_old_password(client, auth_headers):
+    response = client.post(
+        PASSWORD_URL, headers=auth_headers, json={"old_password": "nope", "new_password": "newpass1"}
+    )
+    assert_error(response, 400, "VALIDATION_ERROR")
+
+
+def test_change_password_requires_old_password_when_account_has_one(client, auth_headers):
+    response = client.post(PASSWORD_URL, headers=auth_headers, json={"new_password": "newpass1"})
+    assert_error(response, 400, "VALIDATION_ERROR")
+
+
+def test_oauth_account_can_set_first_password(client, db, user, auth_headers):
+    user.password_hash = None
+    db.commit()
+    response = client.post(PASSWORD_URL, headers=auth_headers, json={"new_password": "newpass1"})
+    assert response.status_code == 200
+    db.refresh(user)
+    assert verify_password("newpass1", user.password_hash)
+
+
+def test_change_password_requires_login(client):
+    assert_error(client.post(PASSWORD_URL, json={"new_password": "newpass1"}), 401, "UNAUTHORIZED")
+
+
+# ---------- avatar ----------
+
+def test_me_without_avatar_uses_gravatar(client, auth_headers):
+    body = client.get(ME_URL, headers=auth_headers).json()
+    assert body["avatar_url"].startswith("https://www.gravatar.com/avatar/")
+
+
+def test_update_avatar(client, auth_headers):
+    response = client.put(AVATAR_URL, headers=auth_headers, json={"avatar_url": " https://example.com/a.png "})
+    assert response.status_code == 200
+    assert response.json()["avatar_url"] == "https://example.com/a.png"
+    assert client.get(ME_URL, headers=auth_headers).json()["avatar_url"] == "https://example.com/a.png"
+
+
+def test_update_avatar_rejects_non_http_url(client, auth_headers):
+    for bad in ("javascript:alert(1)", "not a url", "ftp://example.com/a.png"):
+        response = client.put(AVATAR_URL, headers=auth_headers, json={"avatar_url": bad})
+        assert_error(response, 422, "VALIDATION_ERROR")
+
+
+def test_unknown_url_uses_error_format(client):
     assert_error(client.get("/api/v1/does-not-exist"), 404, "NOT_FOUND")
 
 

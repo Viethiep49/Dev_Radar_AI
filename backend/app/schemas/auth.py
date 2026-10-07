@@ -1,8 +1,11 @@
+"""Request/response schemas for /auth."""
+
 import hashlib
 from datetime import datetime
 from typing import Literal
+from urllib.parse import urlparse
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 
 class RegisterRequest(BaseModel):
@@ -21,12 +24,23 @@ class RefreshRequest(BaseModel):
 
 
 class ChangePasswordRequest(BaseModel):
-    old_password: str
+    # Required when the account already has a password. Google/GitHub-only accounts
+    # have none yet, so they can set a first password without it.
+    old_password: str | None = Field(None, max_length=72)
     new_password: str = Field(min_length=6, max_length=72)
 
 
 class UpdateAvatarRequest(BaseModel):
     avatar_url: str = Field(min_length=1, max_length=500)
+
+    @field_validator("avatar_url")
+    @classmethod
+    def check_http_url(cls, value: str) -> str:
+        value = value.strip()
+        parsed = urlparse(value)
+        if parsed.scheme not in ("http", "https") or not parsed.netloc:
+            raise ValueError("avatar_url must be an http(s) URL")
+        return value
 
 
 class GoogleLoginRequest(BaseModel):
