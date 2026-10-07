@@ -225,14 +225,54 @@ def get_repo_detail(db: Session, user: User, repo_id: int) -> RepoDetailOut:
         .order_by(Collection.id)
     ).all()
 
+    readme_content = repo.readme
+    if not readme_content or not readme_content.strip() or len(readme_content.strip()) < 1200:
+        try:
+            from app.services import github_client
+            fetched = github_client.get_readme(repo.full_name)
+            if fetched and len(fetched.strip()) > len(readme_content or ""):
+                repo.readme = fetched
+                db.commit()
+                readme_content = fetched
+        except Exception:
+            pass
+
+    if not readme_content or not readme_content.strip():
+        topics_str = ", ".join(f"`{t}`" for t in (repo.topics or [])) if repo.topics else "Chưa phân loại"
+        homepage_line = f"- 🌐 [Trang chủ dự án]({repo.homepage})\n" if repo.homepage else ""
+        readme_content = (
+            f"# {repo.name}\n\n"
+            f"> {repo.description or 'Repository mã nguồn mở nổi bật trên GitHub.'}\n\n"
+            "## 📖 Giới thiệu dự án\n"
+            f"Dự án **{repo.name}** được phát triển và duy trì bởi **{repo.owner}**.\n\n"
+            "## 📊 Thông tin tổng quan\n"
+            f"- **Chủ sở hữu**: `{repo.owner}`\n"
+            f"- **Ngôn ngữ chính**: `{repo.language or 'Đa ngôn ngữ'}`\n"
+            f"- **Số sao GitHub**: ⭐ **{repo.stars:,}**\n"
+            f"- **Lượt Fork**: 🍴 **{repo.forks:,}**\n"
+            f"- **Vấn đề mở (Issues)**: 🐞 **{repo.open_issues:,}**\n"
+            f"- **Chủ đề (Topics)**: {topics_str}\n\n"
+            "## 🚀 Hướng dẫn cài đặt & Khởi động nhanh\n"
+            "Để bắt đầu sử dụng hoặc đóng góp cho dự án, bạn có thể clone mã nguồn về máy:\n\n"
+            "```bash\n"
+            f"git clone {repo.html_url}.git\n"
+            f"cd {repo.name}\n"
+            "```\n\n"
+            "## 🔗 Liên kết chính thức\n"
+            f"- 🌐 [Xem mã nguồn trên GitHub]({repo.html_url})\n"
+            f"{homepage_line}"
+        )
+
     return RepoDetailOut(
         **base.model_dump(),
-        readme_available=bool(repo.readme and repo.readme.strip()),
+        readme=readme_content,
+        readme_available=bool(readme_content and readme_content.strip()),
         summary=RepoSummaryOut.model_validate(summary) if summary else None,
         is_watched=watch_id is not None,
         learning_status=learning_status,
         collection_ids=list(collection_ids),
     )
+
 
 
 def get_summary_or_404(db: Session, repo_id: int) -> RepoSummary:

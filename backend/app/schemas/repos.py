@@ -43,6 +43,7 @@ class RepoSummaryOut(BaseModel):
 
 
 class RepoDetailOut(RepoOut):
+    readme: str | None = None
     readme_available: bool
     summary: RepoSummaryOut | None
     # Flags of the logged-in user for this repo
