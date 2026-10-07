@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter_bloc/flutter_bloc.dart';
+
 import '../../../data/models/user_model.dart';
 import '../../../data/repositories/auth_repository.dart';
 import 'auth_event.dart';
@@ -6,21 +9,30 @@ import 'auth_state.dart';
 
 class AuthBloc extends Bloc<AuthEvent, AuthState> {
   final AuthRepository authRepository;
+  StreamSubscription<void>? _sessionExpiredSubscription;
 
-  AuthBloc({required this.authRepository}) : super(AuthInitial()) {
+  /// [sessionExpired] comes from ApiClient: fires when the refresh token is no longer valid.
+  AuthBloc({required this.authRepository, Stream<void>? sessionExpired}) : super(AuthInitial()) {
     on<AuthCheckRequested>(_onAuthCheckRequested);
     on<AuthLoginRequested>(_onAuthLoginRequested);
     on<AuthRegisterRequested>(_onAuthRegisterRequested);
     on<AuthLogoutRequested>(_onAuthLogoutRequested);
+    on<AuthSessionExpired>(_onSessionExpired);
+    on<AuthSocialLoginSucceeded>(_onAuthCheckRequested);
     on<AuthUserUpdated>((event, emit) {
       if (event.user is UserModel) {
         emit(AuthAuthenticated(event.user as UserModel));
       }
     });
+    _sessionExpiredSubscription = sessionExpired?.listen((_) => add(AuthSessionExpired()));
+  }
+
+  Future<AuthAuthenticated> _authenticated(UserModel user) async {
+    return AuthAuthenticated(user, needsOnboarding: await authRepository.needsOnboarding(user.id));
   }
 
   Future<void> _onAuthCheckRequested(
-    AuthCheckRequested event,
+    AuthEvent event,
     Emitter<AuthState> emit,
   ) async {
     try {
@@ -28,13 +40,13 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       if (isAuth) {
         final user = await authRepository.getStoredUser();
         if (user != null) {
-          emit(AuthAuthenticated(user));
+          emit(await _authenticated(user));
           return;
         }
       }
-      emit(AuthUnauthenticated());
+      emit(const AuthUnauthenticated());
     } catch (_) {
-      emit(AuthUnauthenticated());
+      emit(const AuthUnauthenticated());
     }
   }
 
@@ -45,7 +57,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     emit(AuthLoading());
     try {
       final user = await authRepository.login(event.email, event.password);
-      emit(AuthAuthenticated(user));
+      emit(await _authenticated(user));
     } catch (e) {
       emit(AuthFailure(e.toString()));
     }
@@ -62,7 +74,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         event.password,
         event.displayName,
       );
-      emit(AuthAuthenticated(user));
+      emit(await _authenticated(user));
     } catch (e) {
       emit(AuthFailure(e.toString()));
     }
@@ -74,6 +86,21 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   ) async {
     emit(AuthLoading());
     await authRepository.logout();
-    emit(AuthUnauthenticated());
+    emit(const AuthUnauthenticated());
+  }
+
+  Future<void> _onSessionExpired(
+    AuthSessionExpired event,
+    Emitter<AuthState> emit,
+  ) async {
+    if (state is AuthUnauthenticated) return;
+    await authRepository.logout();
+    emit(const AuthUnauthenticated(sessionExpired: true));
+  }
+
+  @override
+  Future<void> close() {
+    _sessionExpiredSubscription?.cancel();
+    return super.close();
   }
 }

@@ -36,6 +36,12 @@ class AuthRegisterRequested extends AuthEvent {
 
 class AuthLogoutRequested extends AuthEvent {}
 
+/// The API client could not refresh the tokens: go back to login.
+class AuthSessionExpired extends AuthEvent {}
+
+/// Also used by social login (the repository already saved the session).
+class AuthSocialLoginSucceeded extends AuthEvent {}
+
 class AuthUserUpdated extends AuthEvent {
   final dynamic user;
 

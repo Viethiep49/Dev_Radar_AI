@@ -20,13 +20,18 @@ class MainNavigationScreen extends StatefulWidget {
 class _MainNavigationScreenState extends State<MainNavigationScreen> {
   int _currentIndex = 0;
 
-  final List<Widget> _screens = const [
-    HomeFeedScreen(), // 0: Khám phá
-    CollectionsScreen(), // 1: Bộ sưu tập
-    StatsScreen(), // 2: Thống kê
-    SettingsScreen(), // 3: Cài đặt (Giao diện màn hình riêng biệt, KHÔNG PHẢI POPUP)
-    SearchScreen(), // 4: Tìm kiếm (Kích hoạt qua nút tròn riêng biệt bên phải)
-  ];
+  // Collections and Stats change when the user acts elsewhere (detail screen...),
+  // so they are rebuilt (and reload their data) each time their tab is opened.
+  int _collectionsVisit = 0;
+  int _statsVisit = 0;
+
+  List<Widget> get _screens => [
+        const HomeFeedScreen(), // 0: Khám phá
+        CollectionsScreen(key: ValueKey('collections-$_collectionsVisit')), // 1: Bộ sưu tập
+        StatsScreen(key: ValueKey('stats-$_statsVisit')), // 2: Thống kê
+        const SettingsScreen(), // 3: Cài đặt
+        const SearchScreen(), // 4: Tìm kiếm (nút tròn riêng bên phải)
+      ];
 
   @override
   Widget build(BuildContext context) {
@@ -47,7 +52,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         icon: Icons.bookmarks_outlined,
         activeIcon: Icons.bookmarks_rounded,
         label: 'Bộ sưu tập',
-        badgeText: '4',
       ),
       const GlassBottomBarItem(
         icon: Icons.bar_chart_outlined,
@@ -58,7 +62,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         icon: Icons.person_outline_rounded,
         activeIcon: Icons.person_rounded,
         label: 'Cài đặt',
-        badgeText: '!',
         avatarUrl: userAvatarUrl,
       ),
     ];
@@ -85,6 +88,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         actionIndex: 4,
         onTap: (index) {
           setState(() {
+            if (index != _currentIndex) {
+              if (index == 1) _collectionsVisit++;
+              if (index == 2) _statsVisit++;
+            }
             _currentIndex = index;
           });
         },

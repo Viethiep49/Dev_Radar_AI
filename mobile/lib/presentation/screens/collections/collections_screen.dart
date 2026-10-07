@@ -1,15 +1,30 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
-import '../../../core/theme/app_colors.dart';
-import '../../../data/models/repo_model.dart';
-import '../../../data/repositories/repo_repository.dart';
-import '../../widgets/glass/glass_button.dart';
-import '../../widgets/glass/glass_card.dart';
-import '../../widgets/glass/glass_container.dart';
-import '../../widgets/glass/glass_icon_button.dart';
-import '../../widgets/glass/glass_modal_sheet.dart';
 
+import '../../../core/theme/app_colors.dart';
+import '../../../data/models/collection_model.dart';
+import '../../../data/models/learning_model.dart';
+import '../../../data/models/note_model.dart';
+import '../../../data/repositories/collection_repository.dart';
+import '../../../data/repositories/learning_repository.dart';
+import '../../../data/repositories/note_repository.dart';
+import '../../state/collections/collections_cubit.dart';
+import '../../state/learning/learning_cubit.dart';
+import '../../state/load_status.dart';
+import '../../state/notes/notes_cubit.dart';
+import '../../widgets/common/state_views.dart';
+import '../../widgets/glass/glass_card.dart';
+import '../../widgets/glass/glass_icon_button.dart';
+import '../../widgets/glass/glass_search_bar.dart';
+import '../notes/note_editor_screen.dart';
+import 'widgets/collection_widgets.dart';
+
+enum _Segment { collections, notes, learning }
+
+/// "Thư viện" tab: my collections, my notes and my learning path.
 class CollectionsScreen extends StatefulWidget {
   const CollectionsScreen({super.key});
 
@@ -18,813 +33,713 @@ class CollectionsScreen extends StatefulWidget {
 }
 
 class _CollectionsScreenState extends State<CollectionsScreen> {
-  List<RepoModel> _allRepos = [];
-  bool _isLoadingRepos = false;
+  _Segment _segment = _Segment.collections;
 
-  // Set các bộ sưu tập đang mở (Mặc định mở bộ sưu tập 1 để giao diện không bị trống)
-  final Set<int> _expandedCollectionIds = {1};
+  @override
+  Widget build(BuildContext context) {
+    return MultiBlocProvider(
+      providers: [
+        BlocProvider(create: (ctx) => CollectionsCubit(ctx.read<CollectionRepository>())..load()),
+        BlocProvider(create: (ctx) => NotesCubit(ctx.read<NoteRepository>())..load()),
+        BlocProvider(create: (ctx) => LearningCubit(ctx.read<LearningRepository>())..load()),
+      ],
+      child: Builder(
+        builder: (context) => SafeArea(
+          bottom: false,
+          child: Column(
+            children: [
+              _Header(
+                segment: _segment,
+                onCreate: () => _CollectionsTab.create(context),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: SegmentedButton<_Segment>(
+                    showSelectedIcon: false,
+                    segments: const [
+                      ButtonSegment(
+                        value: _Segment.collections,
+                        label: Text('Bộ sưu tập', overflow: TextOverflow.ellipsis),
+                      ),
+                      ButtonSegment(
+                        value: _Segment.notes,
+                        label: Text('Ghi chú', overflow: TextOverflow.ellipsis),
+                      ),
+                      ButtonSegment(
+                        value: _Segment.learning,
+                        label: Text('Lộ trình', overflow: TextOverflow.ellipsis),
+                      ),
+                    ],
+                    selected: {_segment},
+                    onSelectionChanged: (selection) {
+                      final segment = selection.first;
+                      setState(() => _segment = segment);
+                      // Data may have changed elsewhere (e.g. repo detail): refresh quietly.
+                      switch (segment) {
+                        case _Segment.collections:
+                          context.read<CollectionsCubit>().load();
+                        case _Segment.notes:
+                          context.read<NotesCubit>().load();
+                        case _Segment.learning:
+                          context.read<LearningCubit>().load();
+                      }
+                    },
+                  ),
+                ),
+              ),
+              Expanded(
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 280),
+                  switchInCurve: Curves.easeOutCubic,
+                  transitionBuilder: (child, animation) => FadeTransition(
+                    opacity: animation,
+                    child: SlideTransition(
+                      position: Tween(begin: const Offset(0.04, 0), end: Offset.zero).animate(animation),
+                      child: child,
+                    ),
+                  ),
+                  child: switch (_segment) {
+                    _Segment.collections => const _CollectionsTab(key: ValueKey('collections')),
+                    _Segment.notes => const _NotesTab(key: ValueKey('notes')),
+                    _Segment.learning => const _LearningTab(key: ValueKey('learning')),
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
 
-  final List<Map<String, dynamic>> _collections = [
-    {
-      'id': 1,
-      'name': 'Đồ án Di động CMP177',
-      'desc': 'Các repo tham khảo cho đồ án Flutter & AI',
-      'count': 5,
-      'repoIds': <int>[1, 2, 3, 4, 5],
-      'icon': Icons.smartphone_rounded,
-      'color': AppColors.primary,
-    },
-    {
-      'id': 2,
-      'name': 'Học Flutter & BLoC Pattern',
-      'desc': 'Clean Architecture, State Management',
-      'count': 8,
-      'repoIds': <int>[1, 2, 3, 4, 5, 9, 10, 11],
-      'icon': Icons.code_rounded,
-      'color': AppColors.secondary,
-    },
-    {
-      'id': 3,
-      'name': 'AI & LLM Services',
-      'desc': 'Ollama, LangChain, RAG embeddings',
-      'count': 6,
-      'repoIds': <int>[6, 7, 8, 13, 14, 15],
-      'icon': Icons.psychology_rounded,
-      'color': AppColors.accent,
-    },
-    {
-      'id': 4,
-      'name': 'Backend FastAPI & Microservices',
-      'desc': 'SQLAlchemy, PostgreSQL, Docker Compose',
-      'count': 4,
-      'repoIds': <int>[6, 7, 8, 10],
-      'icon': Icons.dns_rounded,
-      'color': AppColors.success,
-    },
+class _Header extends StatelessWidget {
+  final _Segment segment;
+  final VoidCallback onCreate;
+
+  const _Header({required this.segment, required this.onCreate});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 12),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Thư viện của tôi',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: textPrimary(context),
+                    letterSpacing: -0.4,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Bộ sưu tập, ghi chú và lộ trình học của bạn',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 11.5, color: textMuted(context)),
+                ),
+              ],
+            ),
+          ),
+          AnimatedScale(
+            scale: segment == _Segment.collections ? 1 : 0,
+            duration: const Duration(milliseconds: 200),
+            child: GlassIconButton(
+              icon: Icons.create_new_folder_outlined,
+              tooltip: 'Tạo bộ sưu tập',
+              onPressed: segment == _Segment.collections ? onCreate : () {},
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Search box that calls [onSearch] 400 ms after the user stops typing.
+class _DebouncedSearch extends StatefulWidget {
+  final String hint;
+  final ValueChanged<String> onSearch;
+
+  const _DebouncedSearch({required this.hint, required this.onSearch});
+
+  @override
+  State<_DebouncedSearch> createState() => _DebouncedSearchState();
+}
+
+class _DebouncedSearchState extends State<_DebouncedSearch> {
+  final _controller = TextEditingController();
+  Timer? _debounce;
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+      child: GlassSearchBar(
+        controller: _controller,
+        hintText: widget.hint,
+        onChanged: (value) {
+          _debounce?.cancel();
+          _debounce = Timer(const Duration(milliseconds: 400), () => widget.onSearch(value));
+        },
+        onSubmitted: (value) {
+          _debounce?.cancel();
+          widget.onSearch(value);
+        },
+        onClear: () {
+          _debounce?.cancel();
+          widget.onSearch('');
+        },
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------- Collections
+
+class _CollectionsTab extends StatelessWidget {
+  const _CollectionsTab({super.key});
+
+  static Future<void> create(BuildContext context) async {
+    final cubit = context.read<CollectionsCubit>();
+    final result = await showCollectionForm(context);
+    if (result == null) return;
+    final error = await cubit.create(name: result.name, description: result.description);
+    if (!context.mounted) return;
+    error != null ? showErrorSnack(context, error) : showSuccessSnack(context, 'Đã tạo "${result.name}"');
+  }
+
+  Future<void> _open(BuildContext context, CollectionModel collection) async {
+    final cubit = context.read<CollectionsCubit>();
+    final changed = await context.push<bool>('/collections/${collection.id}');
+    if (changed == true) await cubit.load();
+  }
+
+  Future<void> _showActions(BuildContext context, CollectionModel collection) async {
+    final cubit = context.read<CollectionsCubit>();
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.edit_outlined),
+              title: const Text('Sửa tên / mô tả'),
+              onTap: () => Navigator.of(ctx).pop('edit'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline_rounded, color: AppColors.error),
+              title: const Text('Xoá bộ sưu tập'),
+              onTap: () => Navigator.of(ctx).pop('delete'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!context.mounted || action == null) return;
+
+    String? error;
+    if (action == 'edit') {
+      final result = await showCollectionForm(
+        context,
+        title: 'Sửa bộ sưu tập',
+        submitText: 'Lưu',
+        initialName: collection.name,
+        initialDescription: collection.description,
+      );
+      if (result == null) return;
+      error = await cubit.update(collection.id, name: result.name, description: result.description);
+    } else {
+      final confirmed = await confirmDelete(
+        context,
+        title: 'Xoá bộ sưu tập?',
+        message: 'Bộ sưu tập "${collection.name}" sẽ bị xoá. Các repo vẫn còn trong hệ thống.',
+      );
+      if (!confirmed) return;
+      error = await cubit.delete(collection.id);
+    }
+    if (error != null && context.mounted) showErrorSnack(context, error);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cubit = context.read<CollectionsCubit>();
+    return Column(
+      children: [
+        _DebouncedSearch(hint: 'Tìm bộ sưu tập...', onSearch: cubit.search),
+        Expanded(
+          child: BlocBuilder<CollectionsCubit, CollectionsState>(
+            builder: (context, state) {
+              if (state.status == LoadStatus.initial ||
+                  (state.status == LoadStatus.loading && state.collections.isEmpty)) {
+                return const SkeletonList(count: 5, itemHeight: 76);
+              }
+              if (state.status == LoadStatus.failure && state.collections.isEmpty) {
+                return ErrorRetryView(
+                  message: state.errorMessage ?? 'Không tải được bộ sưu tập',
+                  onRetry: cubit.load,
+                );
+              }
+              return RefreshIndicator(
+                onRefresh: cubit.load,
+                child: ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 110),
+                  children: [
+                    if (state.fromCache)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: OfflineBanner(cachedAt: state.cachedAt, onRetry: cubit.load),
+                      ),
+                    if (state.collections.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 40),
+                        child: state.query.isNotEmpty
+                            ? EmptyView(
+                                icon: Icons.search_off_rounded,
+                                title: 'Không tìm thấy bộ sưu tập',
+                                subtitle: 'Không có kết quả cho "${state.query}"',
+                              )
+                            : EmptyView(
+                                icon: Icons.folder_open_rounded,
+                                title: 'Chưa có bộ sưu tập nào',
+                                subtitle: 'Tạo bộ sưu tập để phân loại repo theo lộ trình học.',
+                                action: FilledButton.icon(
+                                  onPressed: () => create(context),
+                                  icon: const Icon(Icons.add_rounded),
+                                  label: const Text('Tạo bộ sưu tập đầu tiên'),
+                                ),
+                              ),
+                      ),
+                    for (var i = 0; i < state.collections.length; i++)
+                      _AnimatedEntry(
+                        key: ValueKey('collection-${state.collections[i].id}'),
+                        index: i,
+                        child: _CollectionCard(
+                          collection: state.collections[i],
+                          onTap: () => _open(context, state.collections[i]),
+                          onMore: () => _showActions(context, state.collections[i]),
+                        ),
+                      ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Fade + slide-in for list items, staggered by index.
+class _AnimatedEntry extends StatelessWidget {
+  final int index;
+  final Widget child;
+
+  const _AnimatedEntry({super.key, required this.index, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: Duration(milliseconds: 260 + 40 * index.clamp(0, 8)),
+      curve: Curves.easeOutCubic,
+      builder: (context, value, child) => Opacity(
+        opacity: value,
+        child: Transform.translate(offset: Offset(0, 16 * (1 - value)), child: child),
+      ),
+      child: Padding(padding: const EdgeInsets.only(bottom: 10), child: child),
+    );
+  }
+}
+
+class _CollectionCard extends StatelessWidget {
+  final CollectionModel collection;
+  final VoidCallback onTap;
+  final VoidCallback onMore;
+
+  const _CollectionCard({required this.collection, required this.onTap, required this.onMore});
+
+  static const _palette = [
+    AppColors.primary,
+    AppColors.secondary,
+    AppColors.accent,
+    AppColors.warning,
+    AppColors.info,
   ];
 
   @override
-  void initState() {
-    super.initState();
-    _loadRepos();
-  }
-
-  Future<void> _loadRepos() async {
-    setState(() {
-      _isLoadingRepos = true;
-    });
-    try {
-      final repos = await context.read<RepoRepository>().getTrendingRepos();
-      if (mounted) {
-        setState(() {
-          _allRepos = repos;
-          _isLoadingRepos = false;
-        });
-      }
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _isLoadingRepos = false;
-        });
-      }
-    }
-  }
-
-  void _toggleExpand(int id) {
-    setState(() {
-      if (_expandedCollectionIds.contains(id)) {
-        _expandedCollectionIds.remove(id);
-      } else {
-        _expandedCollectionIds.add(id);
-      }
-    });
-  }
-
-  void _showCreateCollectionDialog(BuildContext context) {
-    final nameController = TextEditingController();
-    final descController = TextEditingController();
-
-    GlassModalSheet.show(
-      context: context,
-      title: 'Tạo bộ sưu tập mới',
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: nameController,
-            decoration: const InputDecoration(
-              hintText: 'Tên bộ sưu tập (vd: Công cụ AI)...',
-              labelText: 'Tên bộ sưu tập',
-              prefixIcon: Icon(Icons.folder_outlined, color: AppColors.primary),
+  Widget build(BuildContext context) {
+    final color = _palette[collection.id % _palette.length];
+    return GestureDetector(
+      onLongPress: onMore,
+      child: GlassCard(
+        onTap: onTap,
+        padding: const EdgeInsets.fromLTRB(14, 12, 4, 12),
+        borderRadius: 18,
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: color.withAlpha(35),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(Icons.folder_rounded, color: color),
             ),
-          ),
-          const SizedBox(height: 14),
-          TextField(
-            controller: descController,
-            decoration: const InputDecoration(
-              hintText: 'Mô tả ngắn...',
-              labelText: 'Mô tả',
-              prefixIcon: Icon(Icons.notes_rounded),
-            ),
-          ),
-          const SizedBox(height: 20),
-          GlassButton(
-            text: 'Tạo bộ sưu tập',
-            icon: Icons.add_rounded,
-            onPressed: () {
-              if (nameController.text.trim().isNotEmpty) {
-                final newId = DateTime.now().millisecondsSinceEpoch;
-                setState(() {
-                  _collections.insert(0, {
-                    'id': newId,
-                    'name': nameController.text.trim(),
-                    'desc': descController.text.trim().isEmpty ? 'Chưa có mô tả' : descController.text.trim(),
-                    'count': 0,
-                    'repoIds': <int>[],
-                    'icon': Icons.folder_special_rounded,
-                    'color': AppColors.primary,
-                  });
-                  _expandedCollectionIds.add(newId);
-                });
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Đã tạo bộ sưu tập mới thành công!'),
-                    backgroundColor: AppColors.success,
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    collection.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: textPrimary(context)),
                   ),
-                );
-              }
-            },
-          ),
-        ],
+                  if (collection.description?.isNotEmpty == true) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      collection.description!,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 12.5, color: textMuted(context)),
+                    ),
+                  ],
+                  const SizedBox(height: 4),
+                  Text(
+                    '${collection.itemCount} repo · ${formatDate(collection.updatedAt)}',
+                    style: TextStyle(fontSize: 11.5, color: textMuted(context)),
+                  ),
+                ],
+              ),
+            ),
+            IconButton(
+              tooltip: 'Tuỳ chọn',
+              icon: const Icon(Icons.more_vert_rounded),
+              onPressed: onMore,
+            ),
+          ],
+        ),
       ),
     );
   }
+}
 
-  void _showEditCollectionDialog(BuildContext context, int index) {
-    final item = _collections[index];
-    final nameController = TextEditingController(text: item['name'] as String);
-    final descController = TextEditingController(text: item['desc'] as String);
+// ---------------------------------------------------------------- Notes
 
-    GlassModalSheet.show(
-      context: context,
-      title: 'Chỉnh sửa bộ sưu tập',
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: nameController,
-            decoration: const InputDecoration(
-              labelText: 'Tên bộ sưu tập',
-              prefixIcon: Icon(Icons.edit_outlined, color: AppColors.primary),
-            ),
-          ),
-          const SizedBox(height: 14),
-          TextField(
-            controller: descController,
-            decoration: const InputDecoration(
-              labelText: 'Mô tả',
-              prefixIcon: Icon(Icons.notes_rounded),
-            ),
-          ),
-          const SizedBox(height: 20),
-          GlassButton(
-            text: 'Lưu thay đổi',
-            icon: Icons.check_circle_outline_rounded,
-            onPressed: () {
-              if (nameController.text.trim().isNotEmpty) {
-                setState(() {
-                  _collections[index]['name'] = nameController.text.trim();
-                  _collections[index]['desc'] = descController.text.trim();
-                });
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Đã cập nhật bộ sưu tập thành công!'),
-                    backgroundColor: AppColors.success,
-                  ),
-                );
-              }
-            },
-          ),
-        ],
-      ),
-    );
+class _NotesTab extends StatelessWidget {
+  const _NotesTab({super.key});
+
+  Future<void> _edit(BuildContext context, NoteModel note) async {
+    final cubit = context.read<NotesCubit>();
+    final changed = await context.push<bool>('/notes/edit', extra: NoteEditorArgs(note: note));
+    if (changed == true) await cubit.load();
   }
 
-  void _showDeleteCollectionDialog(BuildContext context, int index) {
-    final item = _collections[index];
+  Future<bool> _confirmAndDelete(BuildContext context, NoteModel note) async {
+    final cubit = context.read<NotesCubit>();
+    final confirmed = await confirmDelete(
+      context,
+      title: 'Xoá ghi chú?',
+      message: 'Ghi chú về ${note.repo.fullName} sẽ bị xoá vĩnh viễn.',
+    );
+    if (!confirmed) return false;
+    final error = await cubit.delete(note.id);
+    if (error != null && context.mounted) showErrorSnack(context, error);
+    return error == null;
+  }
 
-    showDialog(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          backgroundColor: const Color(0xFF1E222B),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-            side: BorderSide(color: Colors.white.withAlpha(30)),
+  @override
+  Widget build(BuildContext context) {
+    final cubit = context.read<NotesCubit>();
+    return Column(
+      children: [
+        _DebouncedSearch(hint: 'Tìm trong ghi chú...', onSearch: cubit.search),
+        Expanded(
+          child: BlocBuilder<NotesCubit, NotesState>(
+            builder: (context, state) {
+              if (state.status == LoadStatus.initial ||
+                  (state.status == LoadStatus.loading && state.notes.isEmpty)) {
+                return const SkeletonList(count: 4, itemHeight: 96);
+              }
+              if (state.status == LoadStatus.failure && state.notes.isEmpty) {
+                return ErrorRetryView(
+                  message: state.errorMessage ?? 'Không tải được ghi chú',
+                  onRetry: cubit.load,
+                );
+              }
+              return RefreshIndicator(
+                onRefresh: cubit.load,
+                child: ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 110),
+                  children: [
+                    if (state.fromCache)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: OfflineBanner(cachedAt: state.cachedAt, onRetry: cubit.load),
+                      ),
+                    if (state.notes.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 40),
+                        child: state.query.isNotEmpty
+                            ? EmptyView(
+                                icon: Icons.search_off_rounded,
+                                title: 'Không tìm thấy ghi chú',
+                                subtitle: 'Không có kết quả cho "${state.query}"',
+                              )
+                            : const EmptyView(
+                                icon: Icons.sticky_note_2_outlined,
+                                title: 'Chưa có ghi chú nào',
+                                subtitle: 'Mở trang chi tiết một repo để thêm ghi chú cho repo đó.',
+                              ),
+                      ),
+                    for (var i = 0; i < state.notes.length; i++)
+                      _AnimatedEntry(
+                        key: ValueKey('note-${state.notes[i].id}'),
+                        index: i,
+                        child: Dismissible(
+                          key: ValueKey('dismiss-note-${state.notes[i].id}'),
+                          direction: DismissDirection.endToStart,
+                          confirmDismiss: (_) => _confirmAndDelete(context, state.notes[i]),
+                          background: Container(
+                            alignment: Alignment.centerRight,
+                            padding: const EdgeInsets.only(right: 24),
+                            decoration: BoxDecoration(
+                              color: AppColors.error.withAlpha(50),
+                              borderRadius: BorderRadius.circular(18),
+                            ),
+                            child: const Icon(Icons.delete_outline_rounded, color: AppColors.error),
+                          ),
+                          child: _NoteCard(note: state.notes[i], onTap: () => _edit(context, state.notes[i])),
+                        ),
+                      ),
+                  ],
+                ),
+              );
+            },
           ),
-          title: const Row(
+        ),
+      ],
+    );
+  }
+}
+
+class _NoteCard extends StatelessWidget {
+  final NoteModel note;
+  final VoidCallback onTap;
+
+  const _NoteCard({required this.note, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassCard(
+      onTap: onTap,
+      padding: const EdgeInsets.all(14),
+      borderRadius: 18,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              Icon(Icons.warning_amber_rounded, color: AppColors.error, size: 24),
-              SizedBox(width: 8),
-              Text('Xác nhận xóa', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+              const Icon(Icons.book_outlined, size: 16, color: AppColors.primary),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  note.repo.fullName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: AppColors.primary),
+                ),
+              ),
+              Text(formatDate(note.updatedAt), style: TextStyle(fontSize: 11.5, color: textMuted(context))),
             ],
           ),
-          content: Text(
-            'Bạn có chắc chắn muốn xóa bộ sưu tập "${item['name']}"? Hành động này không thể hoàn tác.',
-            style: const TextStyle(color: AppColors.darkTextSecondary, fontSize: 14),
+          const SizedBox(height: 8),
+          Text(
+            note.content,
+            maxLines: 4,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 13.5, height: 1.4, color: textPrimary(context)),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Hủy', style: TextStyle(color: Colors.grey)),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.error,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------- Learning path
+
+class _LearningTab extends StatelessWidget {
+  const _LearningTab({super.key});
+
+  Future<void> _changeStatus(BuildContext context, LearningItemModel item, LearningStatus? status) async {
+    final cubit = context.read<LearningCubit>();
+    if (status == null) {
+      final confirmed = await confirmDelete(
+        context,
+        title: 'Bỏ khỏi lộ trình?',
+        message: 'Bỏ ${item.repo.fullName} khỏi lộ trình học của bạn?',
+      );
+      if (!confirmed) return;
+    }
+    final error = await cubit.changeStatus(item.repoId, status);
+    if (error != null && context.mounted) showErrorSnack(context, error);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cubit = context.read<LearningCubit>();
+    return BlocBuilder<LearningCubit, LearningState>(
+      builder: (context, state) {
+        return Column(
+          children: [
+            SizedBox(
+              height: 44,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                children: [
+                  _filterChip(context, null, 'Tất cả', state.filter),
+                  for (final status in LearningStatus.values)
+                    _filterChip(context, status, status.label, state.filter),
+                ],
               ),
-              onPressed: () {
-                Navigator.pop(dialogContext);
-                setState(() {
-                  _expandedCollectionIds.remove(item['id']);
-                  _collections.removeAt(index);
-                });
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Đã xóa bộ sưu tập "${item['name']}" thành công!'),
-                    backgroundColor: AppColors.error,
-                  ),
-                );
-              },
-              child: const Text('Xóa vĩnh viễn', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
             ),
+            const SizedBox(height: 6),
+            Expanded(child: _buildList(context, cubit, state)),
           ],
         );
       },
     );
   }
 
-  void _showAddRepoDialog(BuildContext context, Map<String, dynamic> item) {
-    final repoIds = (item['repoIds'] as List<dynamic>?)?.cast<int>() ?? <int>[];
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (sheetContext) {
-        final theme = Theme.of(context);
-        final isDark = theme.brightness == Brightness.dark;
-        final availableRepos = _allRepos.where((r) => !repoIds.contains(r.id)).toList();
-
-        return Container(
-          height: MediaQuery.of(context).size.height * 0.75,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF161A23) : Colors.white,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(26)),
-            border: Border.all(color: Colors.white.withAlpha(20)),
-          ),
-          child: Column(
-            children: [
-              Container(
-                width: 40,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 12),
-                decoration: BoxDecoration(
-                  color: Colors.white.withAlpha(40),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Thêm repo vào "${item['name']}"',
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close_rounded),
-                    onPressed: () => Navigator.pop(sheetContext),
-                  ),
-                ],
-              ),
-              const Divider(),
-              Expanded(
-                child: availableRepos.isEmpty
-                    ? const Center(
-                        child: Text(
-                          'Tất cả repo hiện có đã nằm trong bộ sưu tập!',
-                          style: TextStyle(color: Colors.grey),
-                        ),
-                      )
-                    : ListView.separated(
-                        itemCount: availableRepos.length,
-                        separatorBuilder: (context, _) => const Divider(height: 1),
-                        itemBuilder: (context, rIndex) {
-                          final repo = availableRepos[rIndex];
-                          return ListTile(
-                            contentPadding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-                            leading: CircleAvatar(
-                              backgroundColor: AppColors.primary.withAlpha(30),
-                              backgroundImage: NetworkImage(repo.effectiveOwnerAvatarUrl),
-                              onBackgroundImageError: (error, stackTrace) {},
-                              child: Text(repo.name.isNotEmpty ? repo.name[0].toUpperCase() : '?'),
-                            ),
-                            title: Text(
-                              repo.fullName,
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                            ),
-                            subtitle: Text(
-                              repo.description ?? 'Không có mô tả',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontSize: 12),
-                            ),
-                            trailing: ElevatedButton.icon(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppColors.primaryDark,
-                                foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                              ),
-                              icon: const Icon(Icons.add_rounded, size: 16),
-                              label: const Text('Thêm', style: TextStyle(fontSize: 12)),
-                              onPressed: () {
-                                setState(() {
-                                  repoIds.add(repo.id);
-                                  item['repoIds'] = repoIds;
-                                  item['count'] = repoIds.length;
-                                });
-                                Navigator.pop(sheetContext);
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('Đã thêm "${repo.name}" vào bộ sưu tập!'),
-                                    backgroundColor: AppColors.success,
-                                  ),
-                                );
-                              },
-                            ),
-                          );
-                        },
-                      ),
-              ),
-            ],
-          ),
-        );
-      },
+  Widget _filterChip(BuildContext context, LearningStatus? status, String label, LearningStatus? selected) {
+    final color = status == null ? AppColors.primary : learningStatusColor(status);
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: ChoiceChip(
+        label: Text(label),
+        avatar: status == null ? null : Icon(learningStatusIcon(status), size: 16, color: color),
+        selected: selected == status,
+        selectedColor: color.withAlpha(45),
+        onSelected: (_) => context.read<LearningCubit>().setFilter(status),
+      ),
     );
   }
 
-  Color _getLangColor(String? lang) {
-    if (lang == null) return Colors.grey;
-    switch (lang.toLowerCase()) {
-      case 'dart':
-        return AppColors.langDart;
-      case 'python':
-        return AppColors.langPython;
-      case 'typescript':
-        return AppColors.langTypeScript;
-      case 'javascript':
-        return AppColors.langJavaScript;
-      case 'rust':
-        return AppColors.langRust;
-      case 'go':
-        return AppColors.langGo;
-      default:
-        return AppColors.primary;
+  Widget _buildList(BuildContext context, LearningCubit cubit, LearningState state) {
+    if (state.status == LoadStatus.initial || (state.status == LoadStatus.loading && state.items.isEmpty)) {
+      return const SkeletonList(count: 4);
     }
+    if (state.status == LoadStatus.failure && state.items.isEmpty) {
+      return ErrorRetryView(message: state.errorMessage ?? 'Không tải được lộ trình học', onRetry: cubit.load);
+    }
+    return RefreshIndicator(
+      onRefresh: cubit.load,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 110),
+        children: [
+          if (state.fromCache)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: OfflineBanner(cachedAt: state.cachedAt, onRetry: cubit.load),
+            ),
+          if (state.items.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 40),
+              child: EmptyView(
+                icon: Icons.route_outlined,
+                title: state.filter == null
+                    ? 'Lộ trình học đang trống'
+                    : 'Chưa có repo "${state.filter!.label}"',
+                subtitle: 'Trong trang chi tiết repo, chọn trạng thái học tập để thêm vào lộ trình.',
+              ),
+            ),
+          for (var i = 0; i < state.items.length; i++)
+            _AnimatedEntry(
+              key: ValueKey('learning-${state.items[i].id}'),
+              index: i,
+              child: _learningTile(context, state.items[i]),
+            ),
+        ],
+      ),
+    );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    return SafeArea(
-      bottom: false,
-      child: Column(
+  Widget _learningTile(BuildContext context, LearningItemModel item) {
+    final color = learningStatusColor(item.status);
+    final dates = <String>[
+      if (item.startedAt != null) 'Bắt đầu ${formatDate(item.startedAt!)}',
+      if (item.completedAt != null) 'Xong ${formatDate(item.completedAt!)}',
+    ];
+    return RepoBriefTile(
+      repo: item.repo,
+      onTap: () => context.push('/repo/${item.repoId}', extra: item.repo.toRepoModel()),
+      footer: Wrap(
+        spacing: 8,
+        runSpacing: 4,
+        crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          // Header
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 14, 20, 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(color: color.withAlpha(40), borderRadius: BorderRadius.circular(10)),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Bộ sưu tập học tập',
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
-                        letterSpacing: -0.4,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Phân loại và lưu trữ repo theo lộ trình (Bấm để xem danh sách)',
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        color: isDark ? AppColors.darkTextMuted : AppColors.lightTextMuted,
-                      ),
-                    ),
-                  ],
-                ),
-                GlassIconButton(
-                  icon: Icons.create_new_folder_outlined,
-                  tooltip: 'Tạo mới',
-                  onPressed: () => _showCreateCollectionDialog(context),
-                ),
+                Icon(learningStatusIcon(item.status), size: 13, color: color),
+                const SizedBox(width: 4),
+                Text(item.status.label, style: TextStyle(fontSize: 11.5, color: color, fontWeight: FontWeight.w600)),
               ],
             ),
           ),
-
-          // Collections List with Accordion Expandable Repos
-          Expanded(
-            child: _collections.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.folder_open_rounded,
-                          size: 56,
-                          color: isDark ? AppColors.darkTextMuted : AppColors.lightTextMuted,
-                        ),
-                        const SizedBox(height: 12),
-                        const Text(
-                          'Chưa có bộ sưu tập nào',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 6),
-                        TextButton.icon(
-                          onPressed: () => _showCreateCollectionDialog(context),
-                          icon: const Icon(Icons.add_rounded),
-                          label: const Text('Tạo bộ sưu tập đầu tiên'),
-                        ),
-                      ],
-                    ),
-                  )
-                : ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 100),
-                    itemCount: _collections.length,
-                    itemBuilder: (context, index) {
-                      final item = _collections[index];
-                      final color = item['color'] as Color;
-                      final id = item['id'] as int;
-                      final isExpanded = _expandedCollectionIds.contains(id);
-                      final repoIds = (item['repoIds'] as List<dynamic>?)?.cast<int>() ?? <int>[];
-                      final matchedRepos = _allRepos.where((r) => repoIds.contains(r.id)).toList();
-
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 14),
-                        child: GlassCard(
-                          padding: const EdgeInsets.all(14),
-                          borderRadius: 22,
-                          enableGlow: isExpanded,
-                          glowColor: color.withAlpha(40),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              // Clickable Card Header
-                              InkWell(
-                                borderRadius: BorderRadius.circular(16),
-                                onTap: () => _toggleExpand(id),
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(vertical: 2),
-                                  child: Row(
-                                    children: [
-                                      Container(
-                                        width: 48,
-                                        height: 48,
-                                        decoration: BoxDecoration(
-                                          color: color.withAlpha(35),
-                                          borderRadius: BorderRadius.circular(16),
-                                          border: Border.all(color: color.withAlpha(100), width: 1.2),
-                                          boxShadow: [
-                                            BoxShadow(
-                                              color: color.withAlpha(50),
-                                              blurRadius: 10,
-                                              offset: const Offset(0, 3),
-                                            ),
-                                          ],
-                                        ),
-                                        child: Icon(item['icon'] as IconData, color: color, size: 24),
-                                      ),
-                                      const SizedBox(width: 14),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              item['name'] as String,
-                                              style: TextStyle(
-                                                fontSize: 16,
-                                                fontWeight: FontWeight.bold,
-                                                color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
-                                              ),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                            const SizedBox(height: 3),
-                                            Text(
-                                              item['desc'] as String,
-                                              style: TextStyle(
-                                                fontSize: 12,
-                                                color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
-                                              ),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      const SizedBox(width: 6),
-                                      // Repo count badge
-                                      GlassContainer(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                        borderRadius: 10,
-                                        child: Text(
-                                          '${repoIds.length} repo',
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w700,
-                                            color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 4),
-                                      // Animated Dropdown Chevron
-                                      AnimatedRotation(
-                                        turns: isExpanded ? 0.5 : 0.0,
-                                        duration: const Duration(milliseconds: 200),
-                                        child: Icon(
-                                          Icons.keyboard_arrow_down_rounded,
-                                          color: isDark ? AppColors.darkTextMuted : AppColors.lightTextMuted,
-                                          size: 24,
-                                        ),
-                                      ),
-                                      // 3-dots Menu
-                                      PopupMenuButton<String>(
-                                        icon: Icon(
-                                          Icons.more_vert_rounded,
-                                          color: isDark ? AppColors.darkTextMuted : AppColors.lightTextMuted,
-                                          size: 19,
-                                        ),
-                                        color: isDark ? const Color(0xFF1E222B) : Colors.white,
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(14),
-                                          side: BorderSide(color: Colors.white.withAlpha(30)),
-                                        ),
-                                        onSelected: (value) {
-                                          if (value == 'edit') {
-                                            _showEditCollectionDialog(context, index);
-                                          } else if (value == 'delete') {
-                                            _showDeleteCollectionDialog(context, index);
-                                          }
-                                        },
-                                        itemBuilder: (context) => [
-                                          const PopupMenuItem(
-                                            value: 'edit',
-                                            child: Row(
-                                              children: [
-                                                Icon(Icons.edit_outlined, size: 18, color: AppColors.primary),
-                                                SizedBox(width: 10),
-                                                Text('Chỉnh sửa', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
-                                              ],
-                                            ),
-                                          ),
-                                          const PopupMenuItem(
-                                            value: 'delete',
-                                            child: Row(
-                                              children: [
-                                                Icon(Icons.delete_outline_rounded, size: 18, color: AppColors.error),
-                                                SizedBox(width: 10),
-                                                Text('Xóa bộ sưu tập', style: TextStyle(fontSize: 13, color: AppColors.error, fontWeight: FontWeight.w500)),
-                                              ],
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-
-                              // Expanded Section: Repositories List
-                              if (isExpanded) ...[
-                                const SizedBox(height: 12),
-                                Divider(color: (isDark ? Colors.white : Colors.black).withAlpha(20), height: 1),
-                                const SizedBox(height: 12),
-                                Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Icon(Icons.auto_stories_rounded, size: 16, color: color),
-                                        const SizedBox(width: 6),
-                                        Text(
-                                          'Danh sách repository (${repoIds.length})',
-                                          style: TextStyle(
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.bold,
-                                            color: color,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    InkWell(
-                                      borderRadius: BorderRadius.circular(8),
-                                      onTap: () => _showAddRepoDialog(context, item),
-                                      child: Padding(
-                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                                        child: Row(
-                                          children: [
-                                            Icon(Icons.add_circle_outline_rounded, size: 14, color: color),
-                                            const SizedBox(width: 4),
-                                            Text(
-                                              'Thêm repo',
-                                              style: TextStyle(
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.w600,
-                                                color: color,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 10),
-
-                                if (_isLoadingRepos && matchedRepos.isEmpty)
-                                  const Padding(
-                                    padding: EdgeInsets.symmetric(vertical: 20),
-                                    child: Center(
-                                      child: SizedBox(
-                                        width: 24,
-                                        height: 24,
-                                        child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
-                                      ),
-                                    ),
-                                  )
-                                else if (matchedRepos.isEmpty)
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(vertical: 16),
-                                    child: Center(
-                                      child: Column(
-                                        children: [
-                                          Icon(Icons.inbox_outlined, size: 36, color: Colors.grey.withAlpha(150)),
-                                          const SizedBox(height: 6),
-                                          const Text(
-                                            'Chưa có repository nào trong bộ sưu tập này',
-                                            style: TextStyle(fontSize: 12.5, color: Colors.grey),
-                                          ),
-                                          const SizedBox(height: 10),
-                                          ElevatedButton.icon(
-                                            style: ElevatedButton.styleFrom(
-                                              backgroundColor: color.withAlpha(30),
-                                              foregroundColor: color,
-                                              elevation: 0,
-                                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                            ),
-                                            icon: const Icon(Icons.add_rounded, size: 16),
-                                            label: const Text('Thêm repository ngay', style: TextStyle(fontSize: 12)),
-                                            onPressed: () => _showAddRepoDialog(context, item),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  )
-                                else
-                                  ListView.separated(
-                                    shrinkWrap: true,
-                                    physics: const NeverScrollableScrollPhysics(),
-                                    itemCount: matchedRepos.length,
-                                    separatorBuilder: (context, _) => const SizedBox(height: 8),
-                                    itemBuilder: (context, rIndex) {
-                                      final repo = matchedRepos[rIndex];
-                                      return InkWell(
-                                        borderRadius: BorderRadius.circular(14),
-                                        onTap: () {
-                                          context.push('/repo-detail', extra: repo);
-                                        },
-                                        child: Container(
-                                          padding: const EdgeInsets.all(10),
-                                          decoration: BoxDecoration(
-                                            color: isDark ? const Color(0xFF1E2430) : const Color(0xFFF1F5F9),
-                                            borderRadius: BorderRadius.circular(14),
-                                            border: Border.all(
-                                              color: (isDark ? Colors.white : Colors.black).withAlpha(18),
-                                            ),
-                                          ),
-                                          child: Row(
-                                            crossAxisAlignment: CrossAxisAlignment.center,
-                                            children: [
-                                              // Repo Avatar
-                                              CircleAvatar(
-                                                radius: 17,
-                                                backgroundColor: AppColors.primary.withAlpha(30),
-                                                backgroundImage: NetworkImage(repo.effectiveOwnerAvatarUrl),
-                                                onBackgroundImageError: (e, s) {},
-                                                child: Text(
-                                                  repo.name.isNotEmpty ? repo.name[0].toUpperCase() : '?',
-                                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                                                ),
-                                              ),
-                                              const SizedBox(width: 10),
-                                              // Repo Info
-                                              Expanded(
-                                                child: Column(
-                                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                                  children: [
-                                                    Text(
-                                                      repo.fullName,
-                                                      style: TextStyle(
-                                                        fontWeight: FontWeight.bold,
-                                                        fontSize: 13.5,
-                                                        color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
-                                                      ),
-                                                      maxLines: 1,
-                                                      overflow: TextOverflow.ellipsis,
-                                                    ),
-                                                    if (repo.description != null && repo.description!.isNotEmpty) ...[
-                                                      const SizedBox(height: 2),
-                                                      Text(
-                                                        repo.description!,
-                                                        style: TextStyle(
-                                                          fontSize: 11.5,
-                                                          color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
-                                                        ),
-                                                        maxLines: 1,
-                                                        overflow: TextOverflow.ellipsis,
-                                                      ),
-                                                    ],
-                                                    const SizedBox(height: 4),
-                                                    Row(
-                                                      children: [
-                                                        if (repo.language != null) ...[
-                                                          Container(
-                                                            width: 7,
-                                                            height: 7,
-                                                            decoration: BoxDecoration(
-                                                              color: _getLangColor(repo.language),
-                                                              shape: BoxShape.circle,
-                                                            ),
-                                                          ),
-                                                          const SizedBox(width: 4),
-                                                          Text(
-                                                            repo.language!,
-                                                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
-                                                          ),
-                                                          const SizedBox(width: 10),
-                                                        ],
-                                                        const Icon(Icons.star_rounded, size: 14, color: Color(0xFFFFB800)),
-                                                        const SizedBox(width: 2),
-                                                        Text(
-                                                          repo.stars >= 1000 ? '${(repo.stars / 1000).toStringAsFixed(1)}k' : '${repo.stars}',
-                                                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
-                                                        ),
-                                                      ],
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                              const SizedBox(width: 6),
-                                              // Delete from collection icon
-                                              IconButton(
-                                                icon: const Icon(
-                                                  Icons.close_rounded,
-                                                  size: 17,
-                                                  color: AppColors.error,
-                                                ),
-                                                tooltip: 'Xóa khỏi bộ sưu tập',
-                                                onPressed: () {
-                                                  setState(() {
-                                                    repoIds.remove(repo.id);
-                                                    item['repoIds'] = repoIds;
-                                                    item['count'] = repoIds.length;
-                                                  });
-                                                },
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                  ),
-                              ],
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
+          if (dates.isNotEmpty)
+            Text(dates.join(' · '), style: TextStyle(fontSize: 11, color: textMuted(context))),
+        ],
+      ),
+      trailing: PopupMenuButton<String>(
+        tooltip: 'Đổi trạng thái',
+        icon: const Icon(Icons.more_vert_rounded),
+        // PopupMenuButton ignores null values, so "remove" is a string too.
+        onSelected: (value) => _changeStatus(context, item, LearningStatus.fromApi(value)),
+        itemBuilder: (_) => [
+          for (final status in LearningStatus.values)
+            if (status != item.status)
+              PopupMenuItem<String>(
+                value: status.apiValue,
+                child: ListTile(
+                  leading: Icon(learningStatusIcon(status), color: learningStatusColor(status)),
+                  title: Text('Chuyển sang "${status.label}"'),
+                ),
+              ),
+          const PopupMenuItem<String>(
+            value: 'remove',
+            child: ListTile(
+              leading: Icon(Icons.remove_circle_outline_rounded, color: AppColors.error),
+              title: Text('Bỏ khỏi lộ trình'),
+            ),
           ),
         ],
       ),

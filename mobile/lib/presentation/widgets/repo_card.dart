@@ -8,10 +8,14 @@ class RepoCard extends StatelessWidget {
   final RepoModel repo;
   final VoidCallback? onTap;
 
+  /// When set, the owner avatar is a Hero with this tag (shared with the detail screen).
+  final Object? heroTag;
+
   const RepoCard({
     super.key,
     required this.repo,
     this.onTap,
+    this.heroTag,
   });
 
   Color _getLanguageColor(String? lang) {
@@ -38,6 +42,9 @@ class RepoCard extends StatelessWidget {
     }
   }
 
+  Widget _wrapHero(Widget child) =>
+      heroTag == null ? child : Hero(tag: heroTag!, child: child);
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -57,7 +64,7 @@ class RepoCard extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Container(
+              _wrapHero(Container(
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
@@ -81,7 +88,7 @@ class RepoCard extends StatelessWidget {
                     errorBuilder: (context, error, stackTrace) => _buildAvatarFallback(),
                   ),
                 ),
-              ),
+              )),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(

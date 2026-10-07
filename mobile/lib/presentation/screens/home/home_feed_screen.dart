@@ -2,58 +2,213 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+
 import '../../../core/theme/app_colors.dart';
-import '../../state/repo/repo_bloc.dart';
-import '../../state/repo/repo_event.dart';
-import '../../state/repo/repo_state.dart';
-import '../../widgets/glass/glass_button.dart';
-import '../../widgets/glass/glass_container.dart';
+import '../../../data/models/repo_model.dart';
+import '../../../data/repositories/repo_repository.dart';
+import '../../state/feed/feed_bloc.dart';
+import '../../state/feed/feed_event.dart';
+import '../../state/feed/feed_state.dart';
+import '../../widgets/common/fade_slide_in.dart';
+import '../../widgets/common/state_views.dart';
 import '../../widgets/icons/github_logo.dart';
 import '../../widgets/repo_card.dart';
+import '../notifications/widgets/notification_bell.dart';
 
-class HomeFeedScreen extends StatefulWidget {
+/// Home tab: personalised trending feed, language chips, pull-to-refresh, infinite scroll.
+class HomeFeedScreen extends StatelessWidget {
   const HomeFeedScreen({super.key});
 
   @override
-  State<HomeFeedScreen> createState() => _HomeFeedScreenState();
+  Widget build(BuildContext context) {
+    return BlocProvider(
+      create: (context) => FeedBloc(repoRepository: context.read<RepoRepository>())..add(const FeedStarted()),
+      child: const _HomeFeedView(),
+    );
+  }
 }
 
-class _HomeFeedScreenState extends State<HomeFeedScreen> {
-  final ScrollController _scrollController = ScrollController();
-  final List<String> _languages = [
-    'Tất cả',
-    'Dart',
-    'Python',
-    'TypeScript',
-    'JavaScript',
-    'Go',
-    'Rust',
-  ];
-  String _selectedLang = 'Tất cả';
+class _HomeFeedView extends StatefulWidget {
+  const _HomeFeedView();
+
+  @override
+  State<_HomeFeedView> createState() => _HomeFeedViewState();
+}
+
+class _HomeFeedViewState extends State<_HomeFeedView> {
   bool _isHeaderVisible = true;
 
-  @override
-  void initState() {
-    super.initState();
-    _loadRepos();
+  Future<void> _refresh() async {
+    final bloc = context.read<FeedBloc>();
+    bloc.add(const FeedRefreshed());
+    await bloc.stream.first.timeout(const Duration(seconds: 30), onTimeout: () => bloc.state);
+  }
+
+  void _openRepo(RepoModel repo) => context.push('/repo/${repo.id}', extra: repo);
+
+  void _selectLanguage(String? language) {
+    context.read<FeedBloc>().add(FeedLanguageSelected(language));
+  }
+
+  bool _onScrollNotification(ScrollNotification notification) {
+    // Infinite scroll: ask for the next page when close to the end.
+    if (notification.metrics.axis == Axis.vertical && notification.metrics.extentAfter < 400) {
+      context.read<FeedBloc>().add(const FeedLoadMoreRequested());
+    }
+    if (notification is UserScrollNotification) {
+      if (notification.direction == ScrollDirection.reverse && _isHeaderVisible) {
+        setState(() => _isHeaderVisible = false);
+      } else if (notification.direction == ScrollDirection.forward && !_isHeaderVisible) {
+        setState(() => _isHeaderVisible = true);
+      }
+    } else if (notification.metrics.pixels <= 10 && !_isHeaderVisible) {
+      setState(() => _isHeaderVisible = true);
+    }
+    return false;
   }
 
   @override
-  void dispose() {
-    _scrollController.dispose();
-    super.dispose();
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return SafeArea(
+      bottom: false,
+      child: Column(
+        children: [
+          // Header + chips slide away while scrolling down.
+          ClipRect(
+            child: AnimatedAlign(
+              alignment: Alignment.topCenter,
+              duration: const Duration(milliseconds: 260),
+              curve: Curves.easeInOutCubic,
+              heightFactor: _isHeaderVisible ? 1.0 : 0.0,
+              child: AnimatedOpacity(
+                opacity: _isHeaderVisible ? 1.0 : 0.0,
+                duration: const Duration(milliseconds: 200),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _FeedHeader(isDark: isDark),
+                    BlocBuilder<FeedBloc, FeedState>(
+                      buildWhen: (a, b) => a.language != b.language || a.languages != b.languages,
+                      builder: (context, state) => _LanguageChips(
+                        languages: state.languages,
+                        selected: state.language,
+                        isDark: isDark,
+                        onSelected: _selectLanguage,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: NotificationListener<ScrollNotification>(
+              onNotification: _onScrollNotification,
+              child: BlocConsumer<FeedBloc, FeedState>(
+                listenWhen: (a, b) => b.loadMoreError != null && a.loadMoreError != b.loadMoreError && b.repos.isNotEmpty,
+                listener: (context, state) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(state.loadMoreError!), backgroundColor: AppColors.error),
+                  );
+                },
+                builder: (context, state) {
+                  return AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 250),
+                    child: _buildBody(context, state),
+                  );
+                },
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
-  void _loadRepos({bool isRefresh = false}) {
-    final lang = _selectedLang == 'Tất cả' ? null : _selectedLang;
-    context.read<RepoBloc>().add(
-          FetchTrendingReposRequested(language: lang, isRefresh: isRefresh),
+  Widget _buildBody(BuildContext context, FeedState state) {
+    switch (state.status) {
+      case FeedStatus.initial:
+      case FeedStatus.loading:
+        return const SkeletonList(key: ValueKey('loading'), itemHeight: 150);
+      case FeedStatus.failure:
+        return ErrorRetryView(
+          key: const ValueKey('error'),
+          message: state.errorMessage ?? 'Không tải được danh sách repo',
+          onRetry: () => context.read<FeedBloc>().add(const FeedRefreshed()),
         );
+      case FeedStatus.success:
+        if (state.repos.isEmpty) {
+          return RefreshIndicator(
+            key: const ValueKey('empty'),
+            color: AppColors.primary,
+            onRefresh: _refresh,
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              children: [
+                const SizedBox(height: 60),
+                EmptyView(
+                  icon: Icons.inbox_outlined,
+                  title: state.language == null
+                      ? 'Chưa có repo phù hợp với sở thích của bạn'
+                      : 'Chưa có repo nào viết bằng ${state.language}',
+                  subtitle: 'Kéo xuống để làm mới hoặc chọn ngôn ngữ khác',
+                ),
+              ],
+            ),
+          );
+        }
+        final showBanner = state.fromCache;
+        final itemCount = state.repos.length + 1 + (showBanner ? 1 : 0);
+        return RefreshIndicator(
+          key: ValueKey('list-${state.language}'),
+          color: AppColors.primary,
+          onRefresh: _refresh,
+          child: ListView.builder(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.only(top: 4, bottom: 96),
+            itemCount: itemCount,
+            itemBuilder: (context, index) {
+              if (showBanner) {
+                if (index == 0) {
+                  return Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 6),
+                    child: OfflineBanner(
+                      cachedAt: state.cachedAt,
+                      onRetry: () => context.read<FeedBloc>().add(const FeedRefreshed()),
+                    ),
+                  );
+                }
+                index -= 1;
+              }
+              if (index == state.repos.length) return _FeedFooter(state: state);
+              final repo = state.repos[index];
+              return FadeSlideIn(
+                key: ValueKey('repo-${repo.id}'),
+                index: index,
+                child: RepoCard(
+                  repo: repo,
+                  heroTag: 'repo-avatar-${repo.id}',
+                  onTap: () => _openRepo(repo),
+                ),
+              );
+            },
+          ),
+        );
+    }
   }
+}
 
-  Widget _buildTopHeader(bool isDark) {
+class _FeedHeader extends StatelessWidget {
+  final bool isDark;
+
+  const _FeedHeader({required this.isDark});
+
+  @override
+  Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      padding: const EdgeInsets.fromLTRB(16, 12, 12, 8),
       child: Row(
         children: [
           Container(
@@ -62,21 +217,12 @@ class _HomeFeedScreenState extends State<HomeFeedScreen> {
             decoration: BoxDecoration(
               color: const Color(0xFF21262D),
               shape: BoxShape.circle,
-              border: Border.all(
-                color: const Color(0xFF30363D),
-                width: 1.2,
-              ),
+              border: Border.all(color: const Color(0xFF30363D), width: 1.2),
               boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withAlpha(50),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
+                BoxShadow(color: Colors.black.withAlpha(50), blurRadius: 8, offset: const Offset(0, 2)),
               ],
             ),
-            child: const Center(
-              child: GithubLogo(size: 22, color: Colors.white),
-            ),
+            child: const Center(child: GithubLogo(size: 22, color: Colors.white)),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -85,13 +231,16 @@ class _HomeFeedScreenState extends State<HomeFeedScreen> {
               children: [
                 Row(
                   children: [
-                    Text(
-                      'DevRadar',
-                      style: TextStyle(
-                        fontSize: 19,
-                        fontWeight: FontWeight.w800,
-                        color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
-                        letterSpacing: -0.4,
+                    Flexible(
+                      child: Text(
+                        'DevRadar',
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 19,
+                          fontWeight: FontWeight.w800,
+                          color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
+                          letterSpacing: -0.4,
+                        ),
                       ),
                     ),
                     const SizedBox(width: 6),
@@ -104,11 +253,7 @@ class _HomeFeedScreenState extends State<HomeFeedScreen> {
                       ),
                       child: const Text(
                         'GitHub',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.primary,
-                        ),
+                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.primary),
                       ),
                     ),
                   ],
@@ -116,6 +261,8 @@ class _HomeFeedScreenState extends State<HomeFeedScreen> {
                 const SizedBox(height: 1),
                 Text(
                   'Xu hướng mã nguồn mở & Trợ lý AI',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 11.5,
                     color: isDark ? AppColors.darkTextMuted : AppColors.lightTextMuted,
@@ -124,105 +271,80 @@ class _HomeFeedScreenState extends State<HomeFeedScreen> {
               ],
             ),
           ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(
-              color: const Color(0xFF21262D),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFF30363D)),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 7.5,
-                  height: 7.5,
-                  decoration: BoxDecoration(
-                    color: AppColors.success,
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.success.withAlpha(150),
-                        blurRadius: 6,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  'AI Online',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
-                  ),
-                ),
-              ],
-            ),
-          ),
+          const NotificationBellButton(),
         ],
       ),
     );
   }
+}
 
-  Widget _buildLanguageChips(bool isDark) {
+class _LanguageChips extends StatelessWidget {
+  final List<String> languages;
+  final String? selected;
+  final bool isDark;
+  final ValueChanged<String?> onSelected;
+
+  const _LanguageChips({
+    required this.languages,
+    required this.selected,
+    required this.isDark,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final chips = <String?>[null, ...languages];
     return Container(
       height: 42,
       margin: const EdgeInsets.symmetric(vertical: 6),
       child: ListView.separated(
         padding: const EdgeInsets.symmetric(horizontal: 16),
         scrollDirection: Axis.horizontal,
-        itemCount: _languages.length,
+        itemCount: chips.length,
         separatorBuilder: (context, index) => const SizedBox(width: 8),
         itemBuilder: (context, index) {
-          final lang = _languages[index];
-          final isSelected = lang == _selectedLang;
-
-          return MouseRegion(
-            cursor: SystemMouseCursors.click,
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () {
-                if (!isSelected) {
-                  setState(() {
-                    _selectedLang = lang;
-                  });
-                  if (_scrollController.hasClients) {
-                    _scrollController.animateTo(
-                      0,
-                      duration: const Duration(milliseconds: 250),
-                      curve: Curves.easeOut,
-                    );
-                  }
-                  _loadRepos();
-                }
-              },
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 180),
-                padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 7),
-                decoration: BoxDecoration(
+          final language = chips[index];
+          final isSelected = language == selected;
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: isSelected ? null : () => onSelected(language),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 7),
+              decoration: BoxDecoration(
+                color: isSelected
+                    ? AppColors.primaryDark
+                    : (isDark ? const Color(0xFF21262D) : const Color(0xFFEAEEF2)),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
                   color: isSelected
-                      ? AppColors.primaryDark
-                      : (isDark ? const Color(0xFF21262D) : const Color(0xFFEAEEF2)),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: isSelected
-                        ? AppColors.primary
-                        : (isDark ? const Color(0xFF30363D) : const Color(0xFFD0D7DE)),
-                    width: 1.0,
-                  ),
+                      ? AppColors.primary
+                      : (isDark ? const Color(0xFF30363D) : const Color(0xFFD0D7DE)),
                 ),
-                child: Center(
-                  child: Text(
-                    lang,
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
-                      color: isSelected
-                          ? Colors.white
-                          : (isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary),
+              ),
+              child: Center(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (language == null) ...[
+                      Icon(
+                        Icons.auto_awesome_rounded,
+                        size: 14,
+                        color: isSelected ? Colors.white : AppColors.primary,
+                      ),
+                      const SizedBox(width: 5),
+                    ],
+                    Text(
+                      language ?? 'Dành cho bạn',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                        color: isSelected
+                            ? Colors.white
+                            : (isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary),
+                      ),
                     ),
-                  ),
+                  ],
                 ),
               ),
             ),
@@ -231,196 +353,40 @@ class _HomeFeedScreenState extends State<HomeFeedScreen> {
       ),
     );
   }
+}
+
+class _FeedFooter extends StatelessWidget {
+  final FeedState state;
+
+  const _FeedFooter({required this.state});
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-
-    return SafeArea(
-      bottom: false,
-      child: Column(
-        children: [
-          // Smooth slide-up collapsible header on scroll
-          ClipRect(
-            child: AnimatedAlign(
-              alignment: Alignment.topCenter,
-              duration: const Duration(milliseconds: 260),
-              curve: Curves.easeInOutCubic,
-              heightFactor: _isHeaderVisible ? 1.0 : 0.0,
-              child: AnimatedOpacity(
-                opacity: _isHeaderVisible ? 1.0 : 0.0,
-                duration: const Duration(milliseconds: 200),
-                curve: Curves.easeInOut,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _buildTopHeader(isDark),
-                    _buildLanguageChips(isDark),
-                  ],
-                ),
-              ),
-            ),
-          ),
-
-          // Repo List with scroll listener for header collapse
-          Expanded(
-            child: NotificationListener<ScrollNotification>(
-              onNotification: (notification) {
-                if (notification is UserScrollNotification) {
-                  if (notification.direction == ScrollDirection.reverse) {
-                    // Scrolling down -> slide up and hide top header
-                    if (_isHeaderVisible) {
-                      setState(() {
-                        _isHeaderVisible = false;
-                      });
-                    }
-                  } else if (notification.direction == ScrollDirection.forward) {
-                    // Scrolling up -> slide down and reveal top header
-                    if (!_isHeaderVisible) {
-                      setState(() {
-                        _isHeaderVisible = true;
-                      });
-                    }
-                  }
-                } else if (notification.metrics.pixels <= 10 && !_isHeaderVisible) {
-                  // At the very top -> always reveal top header
-                  setState(() {
-                    _isHeaderVisible = true;
-                  });
-                }
-                return false;
-              },
-              child: BlocBuilder<RepoBloc, RepoState>(
-                builder: (context, state) {
-                  if (state is RepoLoading) {
-                    return const Center(
-                      child: CircularProgressIndicator(color: AppColors.primary),
-                    );
-                  }
-
-                  if (state is RepoFailure) {
-                    final is401 = state.message.contains('401') ||
-                        state.message.toLowerCase().contains('unauthorized') ||
-                        state.message.toLowerCase().contains('hết hạn');
-
-                    return Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(28),
-                        child: GlassContainer(
-                          padding: const EdgeInsets.all(24),
-                          borderRadius: 24,
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                is401 ? Icons.lock_clock_rounded : Icons.cloud_off_rounded,
-                                size: 48,
-                                color: is401 ? AppColors.warning : AppColors.error,
-                              ),
-                              const SizedBox(height: 14),
-                              Text(
-                                is401 ? 'Phiên đăng nhập đã hết hạn' : 'Không thể kết nối đến máy chủ',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                is401
-                                    ? 'Vui lòng đăng nhập lại để tiếp tục sử dụng DevRadar.'
-                                    : state.message,
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontSize: 12.5,
-                                  color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
-                                ),
-                              ),
-                              const SizedBox(height: 18),
-                              GlassButton(
-                                text: is401 ? 'Đăng nhập ngay' : 'Thử lại ngay',
-                                icon: is401 ? Icons.login_rounded : Icons.refresh_rounded,
-                                height: 44,
-                                onPressed: () {
-                                  if (is401) {
-                                    context.go('/login');
-                                  } else {
-                                    _loadRepos();
-                                  }
-                                },
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    );
-                  }
-
-                  if (state is RepoLoaded) {
-                    final displayRepos = _selectedLang == 'Tất cả'
-                        ? state.repos
-                        : state.repos
-                            .where((r) => r.language?.toLowerCase() == _selectedLang.toLowerCase())
-                            .toList();
-
-                    if (displayRepos.isEmpty) {
-                      return Center(
-                        child: GlassContainer(
-                          margin: const EdgeInsets.all(32),
-                          padding: const EdgeInsets.all(28),
-                          borderRadius: 24,
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.inbox_outlined,
-                                size: 48,
-                                color: isDark ? AppColors.darkTextMuted : AppColors.lightTextMuted,
-                              ),
-                              const SizedBox(height: 12),
-                              Text(
-                                _selectedLang == 'Tất cả'
-                                    ? 'Chưa có repository nào'
-                                    : 'Không có repository nào viết bằng $_selectedLang',
-                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                                textAlign: TextAlign.center,
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    }
-
-                    return RefreshIndicator(
-                      color: AppColors.primary,
-                      onRefresh: () async => _loadRepos(isRefresh: true),
-                      child: ListView.builder(
-                        controller: _scrollController,
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        padding: const EdgeInsets.only(top: 4, bottom: 96),
-                        itemCount: displayRepos.length,
-                        itemBuilder: (context, index) {
-                          final repo = displayRepos[index];
-                          return RepoCard(
-                            repo: repo,
-                            onTap: () {
-                              context.push('/repo-detail', extra: repo);
-                            },
-                          );
-                        },
-                      ),
-                    );
-                  }
-
-                  return const SizedBox.shrink();
-                },
-              ),
-            ),
-          ),
-        ],
-      ),
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    Widget child;
+    if (state.isLoadingMore) {
+      child = const SizedBox(
+        width: 22,
+        height: 22,
+        child: CircularProgressIndicator(strokeWidth: 2.2, color: AppColors.primary),
+      );
+    } else if (state.loadMoreError != null && state.hasMore) {
+      child = TextButton.icon(
+        onPressed: () => context.read<FeedBloc>().add(const FeedLoadMoreRequested()),
+        icon: const Icon(Icons.refresh_rounded),
+        label: const Text('Tải thêm thất bại – thử lại'),
+      );
+    } else if (!state.hasMore) {
+      child = Text(
+        state.fromCache ? 'Đang xem dữ liệu offline' : 'Bạn đã xem hết danh sách',
+        style: TextStyle(fontSize: 12, color: isDark ? AppColors.darkTextMuted : AppColors.lightTextMuted),
+      );
+    } else {
+      child = const SizedBox.shrink();
+    }
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      child: Center(child: child),
     );
   }
 }

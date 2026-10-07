@@ -1,28 +1,29 @@
 import '../../../core/constants/api_constants.dart';
 import '../../../core/network/api_client.dart';
-import '../../models/repo_model.dart';
 
+/// Raw JSON calls for /repos. The repository parses and caches the results.
 abstract class RepoRemoteDataSource {
-  Future<List<RepoModel>> getRepos({
-    int page = 1,
-    int limit = 20,
+  /// GET /repos/feed -> Page[RepoOut] (repos matching the user's preferences, trending first).
+  Future<Map<String, dynamic>> getFeed({int page = 1, int limit = 20});
+
+  /// GET /repos?q=&language=&topic=&sort= -> Page[RepoOut].
+  Future<Map<String, dynamic>> searchRepos({
+    String? query,
     String? language,
-    String? sort,
-  });
-
-  Future<List<RepoModel>> searchRepos(
-    String query, {
+    String? topic,
+    String sort = 'stars',
     int page = 1,
     int limit = 20,
   });
 
+  /// GET /repos/filters -> {languages: [{name, count}], topics: [...]}.
+  Future<Map<String, dynamic>> getFilters();
+
+  /// GET /repos/{id} -> RepoDetailOut.
   Future<Map<String, dynamic>> getRepoDetail(int id);
 
-  Future<Map<String, dynamic>> askQuestion(int repoId, String question);
-
-  Future<List<dynamic>> getChatHistory(int repoId);
-
-  Future<void> updateLearningStatus(int repoId, String? status);
+  /// GET /repos/{id}/stars?days= -> [{date, stars}], oldest first.
+  Future<List<dynamic>> getStarHistory(int id, {int days = 30});
 }
 
 class RepoRemoteDataSourceImpl implements RepoRemoteDataSource {
@@ -31,57 +32,35 @@ class RepoRemoteDataSourceImpl implements RepoRemoteDataSource {
   RepoRemoteDataSourceImpl({required this.apiClient});
 
   @override
-  Future<List<RepoModel>> getRepos({
-    int page = 1,
-    int limit = 20,
-    String? language,
-    String? sort,
-  }) async {
-    final queryParams = <String, dynamic>{
-      'page': page,
-      'limit': limit,
-    };
-    if (language != null && language.isNotEmpty) {
-      queryParams['language'] = language;
-    }
-    if (sort != null && sort.isNotEmpty) {
-      queryParams['sort'] = sort;
-    }
-
+  Future<Map<String, dynamic>> getFeed({int page = 1, int limit = 20}) async {
     final response = await apiClient.get(
-      ApiConstants.repos,
-      queryParameters: queryParams,
+      ApiConstants.repoFeed,
+      queryParameters: {'page': page, 'limit': limit},
     );
-
-    final data = response.data;
-    if (data is Map<String, dynamic> && data.containsKey('items')) {
-      final items = data['items'] as List<dynamic>;
-      return items.map((e) => RepoModel.fromJson(e as Map<String, dynamic>)).toList();
-    }
-    return [];
+    return response.data as Map<String, dynamic>;
   }
 
   @override
-  Future<List<RepoModel>> searchRepos(
-    String query, {
+  Future<Map<String, dynamic>> searchRepos({
+    String? query,
+    String? language,
+    String? topic,
+    String sort = 'stars',
     int page = 1,
     int limit = 20,
   }) async {
-    final response = await apiClient.get(
-      ApiConstants.repos,
-      queryParameters: {
-        'q': query,
-        'page': page,
-        'limit': limit,
-      },
-    );
+    final params = <String, dynamic>{'sort': sort, 'page': page, 'limit': limit};
+    if (query != null && query.trim().isNotEmpty) params['q'] = query.trim();
+    if (language != null && language.isNotEmpty) params['language'] = language;
+    if (topic != null && topic.isNotEmpty) params['topic'] = topic;
+    final response = await apiClient.get(ApiConstants.repos, queryParameters: params);
+    return response.data as Map<String, dynamic>;
+  }
 
-    final data = response.data;
-    if (data is Map<String, dynamic> && data.containsKey('items')) {
-      final items = data['items'] as List<dynamic>;
-      return items.map((e) => RepoModel.fromJson(e as Map<String, dynamic>)).toList();
-    }
-    return [];
+  @override
+  Future<Map<String, dynamic>> getFilters() async {
+    final response = await apiClient.get(ApiConstants.repoFilters);
+    return response.data as Map<String, dynamic>;
   }
 
   @override
@@ -91,33 +70,11 @@ class RepoRemoteDataSourceImpl implements RepoRemoteDataSource {
   }
 
   @override
-  Future<Map<String, dynamic>> askQuestion(int repoId, String question) async {
-    final response = await apiClient.post(
-      '${ApiConstants.apiV1}/chat/$repoId',
-      data: {'question': question},
+  Future<List<dynamic>> getStarHistory(int id, {int days = 30}) async {
+    final response = await apiClient.get(
+      '${ApiConstants.repos}/$id/stars',
+      queryParameters: {'days': days},
     );
-    return response.data as Map<String, dynamic>;
-  }
-
-  @override
-  Future<List<dynamic>> getChatHistory(int repoId) async {
-    final response = await apiClient.get('${ApiConstants.apiV1}/chat/$repoId');
-    final data = response.data;
-    if (data is Map<String, dynamic> && data.containsKey('items')) {
-      return data['items'] as List<dynamic>;
-    }
-    return [];
-  }
-
-  @override
-  Future<void> updateLearningStatus(int repoId, String? status) async {
-    if (status == null) {
-      await apiClient.delete('${ApiConstants.apiV1}/learning/$repoId');
-    } else {
-      await apiClient.put(
-        '${ApiConstants.apiV1}/learning/$repoId',
-        data: {'status': status},
-      );
-    }
+    return response.data as List<dynamic>;
   }
 }

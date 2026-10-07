@@ -1,5 +1,6 @@
 import 'dart:convert';
 import '../../core/utils/storage_service.dart';
+import '../datasources/local/cache_local_datasource.dart';
 import '../datasources/remote/auth_remote_datasource.dart';
 import '../models/auth_response_model.dart';
 import '../models/user_model.dart';
@@ -13,6 +14,9 @@ abstract class AuthRepository {
   Future<UserModel?> getStoredUser();
   Future<bool> isAuthenticated();
   Future<void> logout();
+
+  /// True until the user finished (or skipped) onboarding on this device.
+  Future<bool> needsOnboarding(int userId);
   Future<void> changePassword(String oldPassword, String newPassword);
   Future<UserModel> updateAvatar(String avatarUrl);
 }
@@ -22,10 +26,15 @@ class AuthRepositoryImpl implements AuthRepository {
   final StorageService storageService;
   final SocialAuthService socialAuthService;
 
+  /// Cached API data of the logged-in user; cleared on logout so the next
+  /// account never sees it.
+  final CacheLocalDataSource? cache;
+
   AuthRepositoryImpl({
     required this.remoteDataSource,
     required this.storageService,
     SocialAuthService? socialAuthService,
+    this.cache,
   }) : socialAuthService = socialAuthService ?? SocialAuthService();
 
   Future<UserModel> _saveSession(AuthResponseModel authResponse) async {
@@ -85,8 +94,12 @@ class AuthRepositoryImpl implements AuthRepository {
   Future<void> logout() async {
     await storageService.clearTokens();
     await storageService.clearUser();
+    await cache?.clear();
     await socialAuthService.signOut();
   }
+
+  @override
+  Future<bool> needsOnboarding(int userId) async => !(await storageService.isOnboardingDone(userId));
 
   @override
   Future<void> changePassword(String oldPassword, String newPassword) async {

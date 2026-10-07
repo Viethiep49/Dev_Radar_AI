@@ -22,22 +22,35 @@ class _SplashScreenState extends State<SplashScreen> {
   void initState() {
     super.initState();
     Future.delayed(const Duration(milliseconds: 1600), () {
-      if (mounted) {
+      if (!mounted) return;
+      _delayDone = true;
+      // The app already checks the session at startup; navigate from that result,
+      // otherwise (still checking) wait for the listener below.
+      final state = context.read<AuthBloc>().state;
+      if (state is AuthAuthenticated || state is AuthUnauthenticated) {
+        _navigate(state);
+      } else if (state is AuthInitial) {
         context.read<AuthBloc>().add(AuthCheckRequested());
       }
     });
   }
 
+  void _navigate(AuthState state) {
+    if (state is AuthAuthenticated) {
+      context.go(state.needsOnboarding ? '/onboarding' : '/home');
+    } else if (state is AuthUnauthenticated || state is AuthFailure) {
+      context.go('/login');
+    }
+  }
+
+  bool _delayDone = false;
+
   @override
   Widget build(BuildContext context) {
     return BlocListener<AuthBloc, AuthState>(
-      listener: (context, state) {
-        if (state is AuthAuthenticated) {
-          context.go('/home');
-        } else if (state is AuthUnauthenticated || state is AuthFailure) {
-          context.go('/login');
-        }
-      },
+      // Only after the splash delay, so the logo animation is always shown.
+      listenWhen: (_, _) => _delayDone,
+      listener: (context, state) => _navigate(state),
       child: Scaffold(
         body: AmbientBackground(
           child: Center(

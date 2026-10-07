@@ -63,7 +63,7 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       final user = isGoogle ? await authRepo.loginWithGoogle() : await authRepo.loginWithGithub();
 
-      authBloc.add(AuthCheckRequested());
+      authBloc.add(AuthSocialLoginSucceeded());
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -108,7 +108,7 @@ class _LoginScreenState extends State<LoginScreen> {
         child: BlocConsumer<AuthBloc, AuthState>(
           listener: (context, state) {
             if (state is AuthAuthenticated) {
-              context.go('/home');
+              context.go(state.needsOnboarding ? '/onboarding' : '/home');
             } else if (state is AuthFailure) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
