@@ -3,13 +3,18 @@ import 'package:flutter/foundation.dart';
 class ApiConstants {
   ApiConstants._();
 
-  // Determine base URL dynamically based on platform
+  /// Override with `flutter run --dart-define=API_BASE_URL=http://192.168.1.10:8080`
+  /// when running on a real phone in the same LAN as the backend.
+  static const String _baseUrlOverride = String.fromEnvironment('API_BASE_URL');
+
   static String get baseUrl {
+    if (_baseUrlOverride.isNotEmpty) {
+      return _baseUrlOverride;
+    }
     if (kIsWeb) {
       return 'http://localhost:8080';
     }
-    // For Android emulator: 10.0.2.2 points to host machine
-    // For real devices or desktop: use LAN IP or localhost
+    // Android emulator: 10.0.2.2 points to the host machine.
     if (defaultTargetPlatform == TargetPlatform.android) {
       return 'http://10.0.2.2:8080';
     }
@@ -18,7 +23,7 @@ class ApiConstants {
 
   static const String apiV1 = '/api/v1';
 
-  // Auth endpoints
+  // Auth
   static const String login = '$apiV1/auth/login';
   static const String register = '$apiV1/auth/register';
   static const String refresh = '$apiV1/auth/refresh';
@@ -28,26 +33,44 @@ class ApiConstants {
   static const String oauthProviders = '$apiV1/auth/oauth/providers';
   static const String googleLogin = '$apiV1/auth/google';
   static const String githubLogin = '$apiV1/auth/github';
+  static const String deviceTokens = '$apiV1/auth/device-tokens';
 
   // GitHub OAuth redirect (must match GITHUB_REDIRECT_URI on the backend
   // and the scheme registered in AndroidManifest.xml).
   static const String oauthCallbackScheme = 'devradar';
 
-  // Repos endpoints
+  // Repos: GET repos (search + filter + sort), GET repos/feed (personalised),
+  // GET repos/filters, GET repos/{id}, GET repos/{id}/summary, GET repos/{id}/stars
   static const String repos = '$apiV1/repos';
-  static const String repoSearch = '$apiV1/repos';
-  static const String repoStats = '$apiV1/stats';
+  static const String repoFeed = '$apiV1/repos/feed';
+  static const String repoFilters = '$apiV1/repos/filters';
 
-  // Collections endpoints
+  // Chat with a repo: POST/GET/DELETE chat/{repoId}
+  static const String chat = '$apiV1/chat';
+
+  // Personal data
+  static const String preferences = '$apiV1/preferences';
   static const String collections = '$apiV1/collections';
+  static const String notes = '$apiV1/notes';
+  static const String learning = '$apiV1/learning';
+  static const String watchlist = '$apiV1/watchlist';
+  static const String notifications = '$apiV1/notifications';
+  static const String notificationsUnreadCount = '$apiV1/notifications/unread-count';
+  static const String notificationsReadAll = '$apiV1/notifications/read-all';
+
+  // Statistics
+  static const String statsOverview = '$apiV1/stats/overview';
+  static const String statsWeekly = '$apiV1/stats/weekly';
+  static const String statsLanguages = '$apiV1/stats/languages';
 
   // Timeouts
   static const Duration connectTimeout = Duration(seconds: 15);
-  static const Duration receiveTimeout = Duration(seconds: 15);
+  static const Duration receiveTimeout = Duration(seconds: 30); // AI chat answers can be slow
 
   // Storage keys
   static const String accessTokenKey = 'devradar_access_token';
   static const String refreshTokenKey = 'devradar_refresh_token';
   static const String userKey = 'devradar_current_user';
   static const String themeModeKey = 'devradar_theme_mode';
+  static const String onboardingDoneKey = 'devradar_onboarding_done';
 }

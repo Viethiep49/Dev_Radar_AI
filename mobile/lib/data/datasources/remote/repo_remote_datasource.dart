@@ -68,7 +68,7 @@ class RepoRemoteDataSourceImpl implements RepoRemoteDataSource {
     int limit = 20,
   }) async {
     final response = await apiClient.get(
-      ApiConstants.repoSearch,
+      ApiConstants.repos,
       queryParameters: {
         'q': query,
         'page': page,
