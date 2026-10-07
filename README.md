@@ -13,6 +13,22 @@
 
 
 
+## Chạy nhanh (Windows) – bấm đúp `run.bat`
+
+1. Mở **Docker Desktop**.
+2. Bấm đúp `run.bat` ở thư mục gốc (hoặc gõ `run.bat` trong terminal). Script tự:
+   tạo `.env` nếu chưa có → bật DB + backend bằng Docker → đợi server sẵn sàng → nạp dữ liệu demo
+   → hỏi chạy app ở đâu: **1** Chrome · **2** máy ảo Android (tự bật AVD `devradar_api36`) · **3** điện thoại thật cùng Wi-Fi · **4** chỉ bật server.
+3. Đăng nhập bằng tài khoản demo `demo@devradar.dev` / `demo1234`.
+
+| Lệnh | Tác dụng |
+|---|---|
+| `run.bat` | DB + backend + chạy app |
+| `run.bat ai` | thêm AI engine + Ollama (tóm tắt/chat AI thật, nên có GPU) |
+| `run.bat stop` | tắt các container |
+
+Cổng backend lấy từ `BACKEND_PORT` trong `.env` (máy đang bị chiếm cổng 8080 thì đặt 8081); app tự dùng đúng cổng.
+
 ## Chạy server (backend + AI + DB)
 
 Yêu cầu: Docker Desktop (Windows cần bật WSL2).
