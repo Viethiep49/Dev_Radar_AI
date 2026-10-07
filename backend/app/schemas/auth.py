@@ -1,9 +1,8 @@
-"""Request/response schemas for /auth."""
-
+import hashlib
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 
 class RegisterRequest(BaseModel):
@@ -19,6 +18,15 @@ class LoginRequest(BaseModel):
 
 class RefreshRequest(BaseModel):
     refresh_token: str
+
+
+class ChangePasswordRequest(BaseModel):
+    old_password: str
+    new_password: str = Field(min_length=6, max_length=72)
+
+
+class UpdateAvatarRequest(BaseModel):
+    avatar_url: str = Field(min_length=1, max_length=500)
 
 
 class GoogleLoginRequest(BaseModel):
@@ -58,6 +66,14 @@ class UserOut(BaseModel):
     email: str
     display_name: str
     created_at: datetime
+    avatar_url: str | None = None
+
+    @model_validator(mode="after")
+    def compute_avatar(self):
+        if not self.avatar_url:
+            h = hashlib.md5(self.email.strip().lower().encode("utf-8")).hexdigest()
+            self.avatar_url = f"https://www.gravatar.com/avatar/{h}?d=identicon&s=200"
+        return self
 
 
 class TokenResponse(BaseModel):

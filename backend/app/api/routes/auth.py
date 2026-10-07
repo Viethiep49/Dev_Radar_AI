@@ -18,6 +18,7 @@ from app.db.session import get_db
 from app.models import DeviceToken, User
 from app.schemas.auth import (
     AuthResponse,
+    ChangePasswordRequest,
     DeviceTokenOut,
     DeviceTokenRequest,
     GitHubLoginRequest,
@@ -27,6 +28,7 @@ from app.schemas.auth import (
     RefreshRequest,
     RegisterRequest,
     TokenResponse,
+    UpdateAvatarRequest,
     UserOut,
 )
 from app.services import oauth_service
@@ -107,6 +109,31 @@ def refresh(body: RefreshRequest, db: Session = Depends(get_db)):
 
 @router.get("/me", response_model=UserOut)
 def me(current_user: User = Depends(get_current_user)):
+    return current_user
+
+
+@router.post("/change-password")
+def change_password(
+    body: ChangePasswordRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if current_user.password_hash and not verify_password(body.old_password, current_user.password_hash):
+        raise AppError(400, ErrorCode.VALIDATION_ERROR, "Mật khẩu hiện tại không chính xác")
+    current_user.password_hash = hash_password(body.new_password)
+    db.commit()
+    return {"status": "ok", "message": "Đổi mật khẩu thành công"}
+
+
+@router.put("/avatar", response_model=UserOut)
+def update_avatar(
+    body: UpdateAvatarRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    current_user.avatar_url = body.avatar_url.strip()
+    db.commit()
+    db.refresh(current_user)
     return current_user
 
 

@@ -28,6 +28,7 @@ def get_feed(
 
 
 @router.get("", response_model=Page[RepoOut])
+@router.get("/search", response_model=Page[RepoOut])
 def search_repos(
     q: str | None = Query(None, max_length=100, description="Text searched in full_name and description"),
     language: str | None = Query(None, max_length=100),
