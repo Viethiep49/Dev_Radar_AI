@@ -11,6 +11,9 @@ OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
 # backend gets a proper error instead of timing out first.
 OLLAMA_TIMEOUT_SECONDS = float(os.getenv("OLLAMA_TIMEOUT_SECONDS", "25"))
 
+# First load of the model in Ollama (only used by the start-up warm-up).
+WARMUP_TIMEOUT_SECONDS = float(os.getenv("WARMUP_TIMEOUT_SECONDS", "300"))
+
 DATABASE_URL = os.environ["DATABASE_URL"]
 
 # Minimum cosine similarity (1 - cosine distance) for a chunk to be used as

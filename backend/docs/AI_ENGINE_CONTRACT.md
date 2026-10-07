@@ -154,7 +154,9 @@ Response `200`:
 Không cần phức tạp, chỉ cần giải thích được:
 
 1. **Chia đoạn (`/index`)**: tách README/docs theo heading và đoạn văn, mỗi chunk khoảng
-   **~500 token** (có thể chồng lấn ~50 token). Giữ nguyên code block trong một chunk nếu được.
+   **~450 ký tự** (chồng lấn 50 ký tự) để không vượt `max_seq_length = 128` token của model
+   embedding `paraphrase-multilingual-MiniLM-L12-v2` (phần vượt sẽ bị cắt khi embed).
+   Giữ nguyên code block trong một chunk nếu được.
 2. **Embedding**: tạo vector cho từng chunk (model embedding của nhà cung cấp LLM hoặc
    sentence-transformers), lưu vào bảng riêng có `repo_id`, `path`, `content`, `embedding`
    (pgvector, schema riêng của AI engine).

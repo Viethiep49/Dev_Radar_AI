@@ -95,9 +95,12 @@ services:
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b}
     command: >
       sh -c "
+        set -e;
         echo 'Đang tải model '$$OLLAMA_MODEL' (sẽ mất vài phút tùy mạng)...';
-        curl -f -sS -X POST http://ollama:11434/api/pull -d '{\"name\": \"'$$OLLAMA_MODEL'\", \"stream\": false}';
-        echo '\\nĐã tải xong!';
+        curl -f -sS -X POST http://ollama:11434/api/pull -d '{\"name\": \"'$$OLLAMA_MODEL'\", \"stream\": false}' | tee /tmp/pull.json;
+        grep -q '\"status\":\"success\"' /tmp/pull.json;
+        echo '';
+        echo 'Đã tải xong!';
       "
 
   video-engine:

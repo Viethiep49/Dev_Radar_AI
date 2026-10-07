@@ -30,12 +30,34 @@ def _vector_literal(values) -> str:
 
 import re
 
+INTRO_MAX_CHARS = 1500
+_SETUP_HEADING = re.compile(
+    r"^#{1,3}[ \t]+(?:install|installation|usage|getting started|quick ?start|setup|"
+    r"cài đặt|hướng dẫn|bắt đầu)\b.*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
 def _readme_excerpt(text: str) -> str:
-    """Extract important sections from README or fallback to top."""
-    match = re.search(r'(?i)^(#{1,3}\s+(?:install|usage|getting started|quickstart|setup|cài đặt|hướng dẫn|bắt đầu).*?)(?=\n#{1,3}\s+|$)', text, re.DOTALL | re.MULTILINE)
-    if match:
-        return match.group(1)[:README_MAX_CHARS]
-    return text[:README_MAX_CHARS]
+    """README part sent to the LLM: the intro (what the project is) plus the
+    install/usage section (for the quickstart), within README_MAX_CHARS."""
+    if len(text) <= README_MAX_CHARS:
+        return text
+
+    match = _SETUP_HEADING.search(text)
+    if not match or match.start() < INTRO_MAX_CHARS:
+        # No setup section, or it is already inside the top part.
+        return text[:README_MAX_CHARS]
+
+    # The section runs until the next heading of the same or a higher level
+    # (sub-headings like "### Requirements" stay inside), or the end.
+    level = len(match.group(0)) - len(match.group(0).lstrip("#"))
+    next_heading = re.compile(rf"^#{{1,{level}}}[ \t]+\S", re.MULTILINE).search(text, match.end())
+    section = text[match.start(): next_heading.start() if next_heading else len(text)].strip()
+
+    intro = text[:INTRO_MAX_CHARS].rstrip()
+    budget = README_MAX_CHARS - len(intro) - len("\n\n...\n\n")
+    return f"{intro}\n\n...\n\n{section[:budget]}"
 
 
 @router.post("/summarize", response_model=SummarizeResponse)
@@ -174,6 +196,8 @@ Trả lời:"""
 
     try:
         answer = call_ollama(prompt, json_format=False)
+    except HTTPException:
+        raise  # 503/504/502 from call_ollama keep their status code
     except Exception:
         logger.exception("Error calling ollama for chat")
         raise HTTPException(status_code=500, detail="Lỗi khi kết nối với mô hình AI.")
