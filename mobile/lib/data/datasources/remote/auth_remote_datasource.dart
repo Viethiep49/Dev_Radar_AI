@@ -1,6 +1,7 @@
 import '../../../core/constants/api_constants.dart';
 import '../../../core/network/api_client.dart';
 import '../../models/auth_response_model.dart';
+import '../../models/oauth_providers_model.dart';
 import '../../models/user_model.dart';
 
 abstract class AuthRemoteDataSource {
@@ -9,6 +10,9 @@ abstract class AuthRemoteDataSource {
   Future<UserModel> getMe();
   Future<void> changePassword(String oldPassword, String newPassword);
   Future<UserModel> updateAvatar(String avatarUrl);
+  Future<OAuthProvidersModel> getOAuthProviders();
+  Future<AuthResponseModel> loginWithGoogle(String idToken);
+  Future<AuthResponseModel> loginWithGithub(String code, String codeVerifier);
 }
 
 class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
@@ -50,7 +54,7 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
   @override
   Future<void> changePassword(String oldPassword, String newPassword) async {
     await apiClient.post(
-      '/auth/change-password',
+      ApiConstants.changePassword,
       data: {
         'old_password': oldPassword,
         'new_password': newPassword,
@@ -61,11 +65,35 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
   @override
   Future<UserModel> updateAvatar(String avatarUrl) async {
     final response = await apiClient.put(
-      '/auth/avatar',
+      ApiConstants.avatar,
       data: {
         'avatar_url': avatarUrl,
       },
     );
     return UserModel.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  @override
+  Future<OAuthProvidersModel> getOAuthProviders() async {
+    final response = await apiClient.get(ApiConstants.oauthProviders);
+    return OAuthProvidersModel.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  @override
+  Future<AuthResponseModel> loginWithGoogle(String idToken) async {
+    final response = await apiClient.post(
+      ApiConstants.googleLogin,
+      data: {'id_token': idToken},
+    );
+    return AuthResponseModel.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  @override
+  Future<AuthResponseModel> loginWithGithub(String code, String codeVerifier) async {
+    final response = await apiClient.post(
+      ApiConstants.githubLogin,
+      data: {'code': code, 'code_verifier': codeVerifier},
+    );
+    return AuthResponseModel.fromJson(response.data as Map<String, dynamic>);
   }
 }

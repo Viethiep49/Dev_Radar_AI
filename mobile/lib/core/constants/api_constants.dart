@@ -23,6 +23,15 @@ class ApiConstants {
   static const String register = '$apiV1/auth/register';
   static const String refresh = '$apiV1/auth/refresh';
   static const String me = '$apiV1/auth/me';
+  static const String changePassword = '$apiV1/auth/change-password';
+  static const String avatar = '$apiV1/auth/avatar';
+  static const String oauthProviders = '$apiV1/auth/oauth/providers';
+  static const String googleLogin = '$apiV1/auth/google';
+  static const String githubLogin = '$apiV1/auth/github';
+
+  // GitHub OAuth redirect (must match GITHUB_REDIRECT_URI on the backend
+  // and the scheme registered in AndroidManifest.xml).
+  static const String oauthCallbackScheme = 'devradar';
 
   // Repos endpoints
   static const String repos = '$apiV1/repos';

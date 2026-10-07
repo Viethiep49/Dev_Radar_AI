@@ -63,7 +63,11 @@ class ApiClient {
 
       String message = 'Đã có lỗi xảy ra ($statusCode)';
       if (data is Map<String, dynamic>) {
-        if (data.containsKey('detail')) {
+        final apiError = data['error'];
+        if (apiError is Map<String, dynamic> && apiError['message'] != null) {
+          // Backend error format: {"error": {"code", "message", "details"}}
+          message = apiError['message'].toString();
+        } else if (data.containsKey('detail')) {
           message = data['detail'].toString();
         } else if (data.containsKey('message')) {
           message = data['message'].toString();

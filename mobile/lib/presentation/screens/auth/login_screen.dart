@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../data/repositories/auth_repository.dart';
+import '../../../data/services/social_auth_service.dart';
 import '../../state/auth/auth_bloc.dart';
 import '../../state/auth/auth_event.dart';
 import '../../state/auth/auth_state.dart';
@@ -47,6 +48,8 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
 
+  /// Real Google/GitHub login: the provider token goes to the backend, which
+  /// verifies it and returns our own JWTs (see backend/docs/OAUTH_LOGIN.md).
   Future<void> _loginWithSocial(String provider) async {
     setState(() {
       _isSocialLoading = true;
@@ -54,45 +57,28 @@ class _LoginScreenState extends State<LoginScreen> {
 
     final authBloc = context.read<AuthBloc>();
     final authRepo = context.read<AuthRepository>();
-
     final isGoogle = provider == 'google';
-    final email = isGoogle ? 'google.dev@devradar.ai' : 'github.dev@devradar.ai';
-    final password = 'social_login_pwd_2026';
-    final displayName = isGoogle ? 'Google Developer' : 'GitHub Developer';
+    final providerName = isGoogle ? 'Google' : 'GitHub';
 
     try {
-      try {
-        await authRepo.login(email, password);
-      } catch (_) {
-        await authRepo.register(email, password, displayName);
-      }
+      final user = isGoogle ? await authRepo.loginWithGoogle() : await authRepo.loginWithGithub();
 
       authBloc.add(AuthCheckRequested());
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Row(
-              children: [
-                Icon(
-                  isGoogle ? Icons.g_mobiledata_rounded : Icons.code_rounded,
-                  color: Colors.white,
-                ),
-                const SizedBox(width: 8),
-                Text('Đăng nhập thành công với $displayName!'),
-              ],
-            ),
+            content: Text('Đăng nhập $providerName thành công: ${user.displayName}'),
             backgroundColor: AppColors.success,
           ),
         );
       }
+    } on SocialAuthException catch (e) {
+      if (mounted && !e.cancelled) {
+        _showSocialError(e.message);
+      }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Không thể kết nối dịch vụ $provider: $e'),
-            backgroundColor: AppColors.error,
-          ),
-        );
+        _showSocialError('Không thể đăng nhập bằng $providerName: $e');
       }
     } finally {
       if (mounted) {
@@ -101,6 +87,15 @@ class _LoginScreenState extends State<LoginScreen> {
         });
       }
     }
+  }
+
+  void _showSocialError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: AppColors.error,
+      ),
+    );
   }
 
   @override

@@ -68,13 +68,8 @@ class _RepoDetailScreenState extends State<RepoDetailScreen> {
       final repoRepo = context.read<RepoRepository>();
       final data = await repoRepo.getRepoDetail(widget.repo.id);
 
-      String? readme = data['readme'] as String?;
-      if (readme == null || readme.trim().length < 1000) {
-        final raw = await _fetchRawGithubReadme(widget.repo.owner, widget.repo.name);
-        if (raw != null && raw.trim().isNotEmpty) {
-          readme = raw;
-        }
-      }
+      // The backend fetches and caches the README from GitHub on first view.
+      final readme = data['readme'] as String?;
 
       if (mounted) {
         setState(() {
