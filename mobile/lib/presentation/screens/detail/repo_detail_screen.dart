@@ -242,7 +242,11 @@ class _RepoDetailViewState extends State<_RepoDetailView> {
           ],
         );
       case _Section.summary:
-        return _SummaryCard(detail: detail);
+        return _SummaryCard(
+          detail: detail,
+          busy: state.summaryBusy,
+          onGenerate: context.read<RepoDetailCubit>().generateSummary,
+        );
       case _Section.quickstart:
         return _QuickstartCard(quickstart: detail.quickstart);
       case _Section.readme:
@@ -671,8 +675,10 @@ class _SectionTabs extends StatelessWidget {
 
 class _SummaryCard extends StatelessWidget {
   final RepoDetailModel detail;
+  final bool busy;
+  final VoidCallback onGenerate;
 
-  const _SummaryCard({required this.detail});
+  const _SummaryCard({required this.detail, required this.busy, required this.onGenerate});
 
   @override
   Widget build(BuildContext context) {
@@ -707,15 +713,25 @@ class _SummaryCard extends StatelessWidget {
                 ),
               ),
             )
-          else
+          else ...[
             Text(
-              'AI chưa tóm tắt repo này. Tóm tắt được tạo tự động theo lịch, hãy quay lại sau.',
+              busy
+                  ? 'AI đang đọc README của repo này. Có thể mất tới 2 phút, bạn đừng rời màn hình nhé.'
+                  : 'Repo này chưa có tóm tắt AI. Bạn có thể tạo ngay, hoặc đợi hệ thống tự tạo theo lịch.',
               style: TextStyle(
                 fontSize: 13.5,
                 height: 1.5,
                 color: isDark ? AppColors.darkTextMuted : AppColors.lightTextMuted,
               ),
             ),
+            const SizedBox(height: 16),
+            GlassButton(
+              text: 'Tạo tóm tắt AI',
+              icon: Icons.auto_awesome_rounded,
+              isLoading: busy,
+              onPressed: busy ? null : onGenerate,
+            ),
+          ],
         ],
       ),
     );

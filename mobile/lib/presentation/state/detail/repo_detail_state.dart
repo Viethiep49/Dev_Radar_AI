@@ -34,6 +34,7 @@ class RepoDetailState extends Equatable {
 
   final bool watchBusy;
   final bool learningBusy;
+  final bool summaryBusy;
   final DetailFeedback? feedback;
 
   const RepoDetailState({
@@ -47,6 +48,7 @@ class RepoDetailState extends Equatable {
     this.errorMessage,
     this.watchBusy = false,
     this.learningBusy = false,
+    this.summaryBusy = false,
     this.feedback,
   });
 
@@ -62,6 +64,7 @@ class RepoDetailState extends Equatable {
     String? Function()? errorMessage,
     bool? watchBusy,
     bool? learningBusy,
+    bool? summaryBusy,
     DetailFeedback? feedback,
   }) {
     return RepoDetailState(
@@ -75,6 +78,7 @@ class RepoDetailState extends Equatable {
       errorMessage: errorMessage != null ? errorMessage() : this.errorMessage,
       watchBusy: watchBusy ?? this.watchBusy,
       learningBusy: learningBusy ?? this.learningBusy,
+      summaryBusy: summaryBusy ?? this.summaryBusy,
       feedback: feedback ?? this.feedback,
     );
   }
@@ -91,6 +95,7 @@ class RepoDetailState extends Equatable {
         errorMessage,
         watchBusy,
         learningBusy,
+        summaryBusy,
         feedback,
       ];
 }

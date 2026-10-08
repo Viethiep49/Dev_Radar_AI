@@ -21,6 +21,9 @@ class ApiConstants {
     return 'http://localhost:8080';
   }
 
+  /// Absolute URL for a path the backend returned relative (video URLs are).
+  static String absoluteUrl(String path) => '$baseUrl$path';
+
   static const String apiV1 = '/api/v1';
 
   // Auth
@@ -63,9 +66,17 @@ class ApiConstants {
   static const String statsWeekly = '$apiV1/stats/weekly';
   static const String statsLanguages = '$apiV1/stats/languages';
 
+  // Roadmap video: POST videos/roadmap (renders, blocks), GET videos/{jobId} (public MP4)
+  static const String videos = '$apiV1/videos';
+
   // Timeouts
   static const Duration connectTimeout = Duration(seconds: 15);
   static const Duration receiveTimeout = Duration(seconds: 30); // AI chat answers can be slow
+
+  /// For the two calls that block server-side for minutes: generating a summary
+  /// (AI reads a whole README) and rendering a video. Set above the backend's own
+  /// ceilings so the backend's error arrives instead of a client-side timeout.
+  static const Duration slowRequestTimeout = Duration(seconds: 330);
 
   // Storage keys
   static const String accessTokenKey = 'devradar_access_token';

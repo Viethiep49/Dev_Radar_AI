@@ -37,16 +37,26 @@ RepoModel repoModel(int id) => RepoModel.fromJson(repoJson(id));
 PageModel<RepoModel> repoPage(List<int> ids, {int page = 1, int limit = 20, int? total}) =>
     PageModel.fromJson(pageJson(ids, page: page, limit: limit, total: total), RepoModel.fromJson);
 
-Map<String, dynamic> detailJson(int id, {bool isWatched = false, String? learningStatus, List<int> collectionIds = const []}) => {
+Map<String, dynamic> detailJson(
+  int id, {
+  bool isWatched = false,
+  String? learningStatus,
+  List<int> collectionIds = const [],
+  bool hasSummary = true,
+}) =>
+    {
       ...repoJson(id),
       'readme': '# repo$id',
       'readme_available': true,
-      'summary': {
-        'summary': 'A great repo',
-        'quickstart': 'flutter pub add repo$id',
-        'model': 'test-model',
-        'created_at': '2026-10-01T00:00:00Z',
-      },
+      // The backend sends null until the cron (or the on-demand endpoint) has run.
+      'summary': hasSummary
+          ? {
+              'summary': 'A great repo',
+              'quickstart': 'flutter pub add repo$id',
+              'model': 'test-model',
+              'created_at': '2026-10-01T00:00:00Z',
+            }
+          : null,
       'is_watched': isWatched,
       'learning_status': learningStatus,
       'collection_ids': collectionIds,
