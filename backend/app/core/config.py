@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     ai_engine_url: str = ""
     ai_timeout_seconds: int = 30
 
+    video_engine_url: str = ""  # empty = the video feature is off
+    video_timeout_seconds: int = 300  # a render takes 30s-1min; this is the ceiling
+    video_output_dir: str = "/data/videos"  # shared volume, mounted read-only
+
     enable_scheduler: bool = False
 
 
