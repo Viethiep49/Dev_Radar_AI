@@ -1,5 +1,7 @@
 gradle-wrapper.jar
 /.gradle
+# Gradle's project-level output (mobile/build/ is already ignored, this one was not).
+/build/
 /captures/
 /gradlew
 /gradlew.bat
