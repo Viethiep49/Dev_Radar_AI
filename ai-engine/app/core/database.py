@@ -30,6 +30,12 @@ ENSURE_SCHEMA_SQL = [
     # ivfflat has been removed because it scans clusters before filtering by repo_id,
     # which can cause 0 chunks to be returned for small datasets.
     # If the dataset grows very large, consider using HNSW with hnsw.iterative_scan = strict_order.
+    #
+    # Older versions created it, and CREATE ... IF NOT EXISTS cannot undo that: with
+    # lists=100 over a few hundred rows and the default probes=1, an
+    # `ORDER BY embedding <=> $1 LIMIT k` query scans one list and returns 0 rows, so
+    # /chat answers "Không tìm thấy trong tài liệu" for every question. Drop it.
+    "DROP INDEX IF EXISTS repo_embeddings_embedding_idx",
 ]
 
 
