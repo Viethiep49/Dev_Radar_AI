@@ -1,4 +1,5 @@
 import json
+import re
 from unittest.mock import MagicMock, patch
 
 from app.api.v1 import README_MAX_CHARS, _readme_excerpt
@@ -236,3 +237,63 @@ def test_chat_keeps_the_short_global_timeout(client, mock_embedder, mock_db, moc
     client.post("/chat", json={"repo_id": 1, "full_name": "t/r", "question": "?", "history": []})
 
     assert mock_ollama.call_args.kwargs.get("timeout") is None  # falls back to the global
+
+
+def _chat_prompt(mock_ollama) -> str:
+    """The prompt the /chat handler handed to Ollama."""
+    return mock_ollama.call_args.args[0]
+
+
+def test_chat_prompt_keeps_the_language_rule_next_to_the_generation_point(
+    client, mock_embedder, mock_db, mock_ollama
+):
+    """READMEs are English and qwen2.5 has strong Chinese priors.
+
+    A real request came back in Vietnamese and then switched to
+    "...代码超出限制，我已经省略了超出部分。这段Bloc用于在Da...". The rule has to be
+    the instruction closest to generation, and the closing cue has to carry it
+    too: whichever instruction is nearest wins.
+    """
+    mock_ollama.return_value = "câu trả lời"
+
+    client.post("/chat", json={
+        "repo_id": 1, "full_name": "test/repo", "question": "Repo này là gì?", "history": [],
+    })
+
+    prompt = _chat_prompt(mock_ollama)
+    rule = "Viết toàn bộ câu trả lời bằng tiếng Việt"
+    assert rule in prompt
+    assert prompt.index(rule) > prompt.index("</readme>")
+    assert prompt.rstrip().endswith("Trả lời bằng tiếng Việt:")
+
+
+def test_chat_prompt_does_not_name_other_languages(client, mock_embedder, mock_db, mock_ollama):
+    """The rule must be positive-only: name Vietnamese, name nothing else.
+
+    Measured on the live stack, a rule reading "Viết toàn bộ câu trả lời bằng
+    tiếng Việt, không dùng tiếng Trung" made BOTH answers come back fully in
+    Chinese, while the positive-only wording gave 12 of 13 in Vietnamese.
+    Naming a language inside a negation appears to prime it.
+    """
+    mock_ollama.return_value = "câu trả lời"
+
+    client.post("/chat", json={
+        "repo_id": 1, "full_name": "test/repo", "question": "Repo này là gì?", "history": [],
+    })
+
+    prompt = _chat_prompt(mock_ollama)
+    assert "tiếng Trung" not in prompt
+    assert "tiếng Anh" not in prompt
+    assert not re.search(r"[一-鿿]", prompt)
+
+
+def test_chat_prompt_forbids_meta_notes_about_truncation(client, mock_embedder, mock_db, mock_ollama):
+    """The same answer announced that it had omitted part of the content."""
+    mock_ollama.return_value = "câu trả lời"
+
+    client.post("/chat", json={
+        "repo_id": 1, "full_name": "test/repo", "question": "Repo này là gì?", "history": [],
+    })
+
+    prompt = mock_ollama.call_args.args[0]
+    assert "cắt bớt" in prompt or "giới hạn độ dài" in prompt
