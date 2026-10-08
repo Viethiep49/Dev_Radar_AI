@@ -21,6 +21,7 @@ from app.models import (
     UserRepo,
     Watchlist,
 )
+from app.jobs import ai_jobs
 from app.schemas.repos import RepoDetailOut, RepoOut, RepoSummaryOut, StarPoint
 from app.services import github_client
 from app.services.github_client import GitHubError
@@ -268,6 +269,35 @@ def get_summary_or_404(db: Session, repo_id: int) -> RepoSummary:
     if summary is None:
         raise AppError(404, ErrorCode.NOT_FOUND, "Chưa có tóm tắt AI cho repo này")
     return summary
+
+
+def generate_summary(db: Session, repo_id: int) -> RepoSummary:
+    """Generate one repo's summary now instead of waiting for the cron.
+
+    Blocks while the AI engine works, so the pooled connection is handed back
+    before the call: see the rollback below and summarize_repo's docstring.
+    """
+    repo = get_repo_or_404(db, repo_id)
+
+    existing = db.scalar(select(RepoSummary).where(RepoSummary.repo_id == repo.id))
+    if existing is not None:
+        return existing  # idempotent: a second tap costs no GPU time
+
+    readme = _ensure_readme(db, repo)
+    if readme is None:
+        # GitHub was unreachable and nothing was stored, so a retry can work.
+        raise AppError(
+            502, ErrorCode.UPSTREAM_ERROR, "Không lấy được README của repo, vui lòng thử lại"
+        )
+    if not readme.strip():
+        raise AppError(400, ErrorCode.BAD_REQUEST, "Repo này không có README để tóm tắt")
+
+    # Plain values: a rollback expires ORM objects, so touching repo.* after it
+    # would re-open the transaction and hold a connection for the whole AI call.
+    repo_id, full_name = repo.id, repo.full_name
+    db.rollback()
+
+    return ai_jobs.summarize_repo(db, repo_id, full_name, readme)
 
 
 def get_star_history(db: Session, repo_id: int, days: int) -> list[StarPoint]:

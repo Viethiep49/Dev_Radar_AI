@@ -4,7 +4,9 @@ import itertools
 from datetime import timedelta
 
 import pytest
+from sqlalchemy import select
 
+from app.core.errors import AppError, ErrorCode
 from app.db.base import utcnow
 from app.models import (
     Collection,
@@ -17,7 +19,7 @@ from app.models import (
     UserRepo,
     Watchlist,
 )
-from app.services import repo_service
+from app.services import ai_client, repo_service
 from app.services.github_client import GitHubError
 from app.services.repo_service import today_utc
 
@@ -395,3 +397,136 @@ def test_star_history_validation(client, auth_headers, db):
     assert client.get(f"{URL}/{repo.id}/stars?days=0", headers=auth_headers).status_code == 422
     assert client.get(f"{URL}/{repo.id}/stars?days=366", headers=auth_headers).status_code == 422
     assert client.get(f"{URL}/999/stars", headers=auth_headers).status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# On-demand summary (POST /repos/{id}/summary)
+# ---------------------------------------------------------------------------
+@pytest.fixture
+def fake_ai(monkeypatch):
+    """Fake the AI engine so no test talks to it. Returns the recorded calls."""
+    calls = {"summarize": [], "index": []}
+
+    def fake_summarize(repo_id, full_name, readme):
+        calls["summarize"].append((repo_id, full_name, readme))
+        return {"summary": f"Tóm tắt {full_name}", "quickstart": "pip install x", "model": "test-llm"}
+
+    def fake_index(repo_id, full_name, documents):
+        calls["index"].append((repo_id, documents))
+        return {"chunks": 1}
+
+    monkeypatch.setattr(ai_client, "summarize", fake_summarize)
+    monkeypatch.setattr(ai_client, "index", fake_index)
+    return calls
+
+
+def test_post_summary_generates_and_returns_it(client, auth_headers, db, fake_ai):
+    repo = make_repo(db, "owner/thing", readme="# Thing\n\nDoes things.\n")
+
+    response = client.post(f"{URL}/{repo.id}/summary", headers=auth_headers)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["summary"] == "Tóm tắt owner/thing"
+    assert body["quickstart"] == "pip install x"
+    assert body["model"] == "test-llm"
+
+    saved = db.scalar(select(RepoSummary).where(RepoSummary.repo_id == repo.id))
+    assert saved is not None and saved.summary == "Tóm tắt owner/thing"
+    # The README is indexed in the same call, so /chat can answer afterwards.
+    assert fake_ai["index"] == [(repo.id, [{"path": "README.md", "content": "# Thing\n\nDoes things.\n"}])]
+
+
+def test_post_summary_releases_the_db_connection_while_the_ai_runs(
+    client, auth_headers, db, fake_ai, monkeypatch
+):
+    """The AI call blocks for tens of seconds.
+
+    db.rollback() expires every ORM object, so reading an attribute off one
+    afterwards silently re-opens the transaction and the pooled connection is
+    held for the whole call - which can exhaust QueuePool for every other route.
+    The values must be read into plain locals before the rollback.
+    """
+    repo = make_repo(db, "owner/slow", readme="# Slow\n")
+    seen = {}
+
+    def summarize_while_watching(repo_id, full_name, readme):
+        seen["in_transaction"] = db.in_transaction()
+        return {"summary": "s", "quickstart": None, "model": "m"}
+
+    monkeypatch.setattr(ai_client, "summarize", summarize_while_watching)
+
+    assert client.post(f"{URL}/{repo.id}/summary", headers=auth_headers).status_code == 200
+    assert seen["in_transaction"] is False
+
+
+def test_post_summary_returns_the_existing_row_without_calling_the_ai(
+    client, auth_headers, db, fake_ai
+):
+    repo = make_repo(db, "owner/done", readme="# Done\n")
+    db.add(RepoSummary(repo_id=repo.id, summary="Đã có rồi", quickstart=None, model="old"))
+    db.commit()
+
+    response = client.post(f"{URL}/{repo.id}/summary", headers=auth_headers)
+
+    assert response.status_code == 200
+    assert response.json()["summary"] == "Đã có rồi"
+    assert fake_ai["summarize"] == []  # a second tap must not burn GPU time
+
+
+def test_post_summary_is_idempotent(client, auth_headers, db, fake_ai):
+    repo = make_repo(db, "owner/twice", readme="# Twice\n")
+
+    client.post(f"{URL}/{repo.id}/summary", headers=auth_headers)
+    client.post(f"{URL}/{repo.id}/summary", headers=auth_headers)
+
+    assert len(db.scalars(select(RepoSummary).where(RepoSummary.repo_id == repo.id)).all()) == 1
+
+
+def test_post_summary_without_a_readme_is_400(client, auth_headers, db, fake_ai):
+    # readme == "" means GitHub answered "this repo has no README"; retrying cannot help.
+    repo = make_repo(db, "owner/empty", readme="")
+
+    response = client.post(f"{URL}/{repo.id}/summary", headers=auth_headers)
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "BAD_REQUEST"
+    assert fake_ai["summarize"] == []
+
+
+def test_post_summary_when_the_readme_fetch_fails_is_502(
+    client, auth_headers, db, fake_ai, fake_readme
+):
+    # readme is None and GitHub is unreachable: transient, not the caller's fault.
+    fake_readme.result = GitHubError("rate limited")
+    repo = make_repo(db, "owner/nofetch", readme=None)
+
+    response = client.post(f"{URL}/{repo.id}/summary", headers=auth_headers)
+
+    assert response.status_code == 502
+    assert response.json()["error"]["code"] == "UPSTREAM_ERROR"
+    assert fake_ai["summarize"] == []
+
+
+def test_post_summary_engine_timeout_is_504(client, auth_headers, db, fake_ai, monkeypatch):
+    repo = make_repo(db, "owner/timeout", readme="# Slow\n")
+
+    def timeout(*args, **kwargs):
+        raise AppError(504, ErrorCode.UPSTREAM_TIMEOUT, "too slow")
+
+    monkeypatch.setattr(ai_client, "summarize", timeout)
+
+    response = client.post(f"{URL}/{repo.id}/summary", headers=auth_headers)
+
+    assert response.status_code == 504
+    assert response.json()["error"]["code"] == "UPSTREAM_TIMEOUT"
+
+
+def test_post_summary_requires_auth(client, db):
+    repo = make_repo(db, "owner/private", readme="# x\n")
+
+    assert client.post(f"{URL}/{repo.id}/summary").status_code == 401
+
+
+def test_post_summary_unknown_repo_is_404(client, auth_headers, fake_ai):
+    assert client.post(f"{URL}/999/summary", headers=auth_headers).status_code == 404

@@ -130,7 +130,9 @@ Response `200`:
 
 ## 3. Timeout và lỗi
 
-- Backend đặt **timeout = `AI_TIMEOUT_SECONDS`** (mặc định **30 giây**) cho mọi request sang AI engine
+- Backend đặt **timeout = `AI_TIMEOUT_SECONDS`** (mặc định **150 giây**) cho mọi request sang AI engine.
+  Trần này cao vì `/summarize` đọc cả README; `/chat` và `/index` thực tế bị chặn bởi
+  `OLLAMA_TIMEOUT_SECONDS` (25 giây) phía engine nên vẫn fail nhanh.
   (gồm cả thời gian kết nối và chờ trả lời). Chat thường mất 5–15 giây là ổn.
 - Backend xử lý như sau (app nhận lỗi theo định dạng chung trong `API_CONVENTIONS.md`):
 

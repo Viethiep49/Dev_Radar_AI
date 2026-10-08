@@ -57,6 +57,12 @@ def get_summary(repo_id: int, current_user: User = Depends(get_current_user), db
     return repo_service.get_summary_or_404(db, repo_id)
 
 
+@router.post("/{repo_id}/summary", response_model=RepoSummaryOut)
+def generate_summary(repo_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Generate this repo's summary now instead of waiting for the cron. Blocks while the AI works."""
+    return repo_service.generate_summary(db, repo_id)
+
+
 @router.get("/{repo_id}/stars", response_model=list[StarPoint])
 def get_star_history(
     repo_id: int,
