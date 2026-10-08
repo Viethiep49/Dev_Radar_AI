@@ -210,3 +210,29 @@ def test_chunks_fit_embedding_model_max_seq_length():
     chunks = chunker.split_text(text)
     assert len(chunks) > 1
     assert max(len(model.tokenizer(c)["input_ids"]) for c in chunks) <= model.max_seq_length
+
+
+# ---------- timeouts ----------
+
+def test_summarize_gets_its_own_longer_timeout(client, mock_ollama):
+    """Summarising reads a whole README and can take well over the global 25s.
+
+    Chat keeps the short global timeout so a stuck Ollama fails fast there; only
+    /summarize asks for the longer budget.
+    """
+    from app.core.config import OLLAMA_TIMEOUT_SECONDS, SUMMARIZE_TIMEOUT_SECONDS
+
+    mock_ollama.return_value = json.dumps({"summary": "s", "quickstart": "q"})
+
+    client.post("/summarize", json={"repo_id": 1, "full_name": "t/r", "readme": "# x"})
+
+    assert SUMMARIZE_TIMEOUT_SECONDS > OLLAMA_TIMEOUT_SECONDS
+    assert mock_ollama.call_args.kwargs["timeout"] == SUMMARIZE_TIMEOUT_SECONDS
+
+
+def test_chat_keeps_the_short_global_timeout(client, mock_embedder, mock_db, mock_ollama):
+    mock_ollama.return_value = "câu trả lời"
+
+    client.post("/chat", json={"repo_id": 1, "full_name": "t/r", "question": "?", "history": []})
+
+    assert mock_ollama.call_args.kwargs.get("timeout") is None  # falls back to the global

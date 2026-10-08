@@ -14,6 +14,11 @@ OLLAMA_TIMEOUT_SECONDS = float(os.getenv("OLLAMA_TIMEOUT_SECONDS", "25"))
 # First load of the model in Ollama (only used by the start-up warm-up).
 WARMUP_TIMEOUT_SECONDS = float(os.getenv("WARMUP_TIMEOUT_SECONDS", "300"))
 
+# /summarize reads a whole README and is the slowest call by far, so it gets its
+# own budget. Chat keeps OLLAMA_TIMEOUT_SECONDS above so a stuck Ollama fails
+# fast there (the Flutter client waits 30s for chat).
+SUMMARIZE_TIMEOUT_SECONDS = float(os.getenv("SUMMARIZE_TIMEOUT_SECONDS", "120"))
+
 DATABASE_URL = os.environ["DATABASE_URL"]
 
 # Floor on cosine similarity (1 - cosine distance) for a chunk to be used as

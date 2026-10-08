@@ -4,7 +4,7 @@ import logging
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import text
 
-from app.core.config import MIN_SIMILARITY, OLLAMA_MODEL
+from app.core.config import MIN_SIMILARITY, OLLAMA_MODEL, SUMMARIZE_TIMEOUT_SECONDS
 from app.core.database import SessionLocal
 from app.schemas.payload import ChatRequest, IndexRequest, SummarizeRequest
 from app.schemas.response import ChatResponse, SummarizeResponse
@@ -74,7 +74,7 @@ README:
 </readme>
 """
 
-    response_text = call_ollama(prompt, json_format=True)
+    response_text = call_ollama(prompt, json_format=True, timeout=SUMMARIZE_TIMEOUT_SECONDS)
 
     try:
         data = json.loads(response_text)

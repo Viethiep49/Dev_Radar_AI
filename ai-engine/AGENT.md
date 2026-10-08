@@ -281,7 +281,8 @@ ai-engine/
 |---|---|---|
 | `OLLAMA_URL` | `http://ollama:11434/api/generate` | Ollama endpoint (auto‑normalized to end with `/api/generate`). |
 | `OLLAMA_MODEL` | `qwen2.5:7b` | Model used for summarize/chat. |
-| `OLLAMA_TIMEOUT_SECONDS` | `25` | HTTP timeout for Ollama. Must stay below the backend's `AI_TIMEOUT_SECONDS` (30s). |
+| `OLLAMA_TIMEOUT_SECONDS` | `25` | HTTP timeout for `/chat` and `/index`. Must stay below the backend's `AI_TIMEOUT_SECONDS`. |
+| `SUMMARIZE_TIMEOUT_SECONDS` | `120` | Its own budget for `/summarize`, which reads a whole README. |
 | `MIN_SIMILARITY` | `0.35` | Minimum cosine similarity for a chunk to be used as chat context. |
 | `DATABASE_URL` | `postgresql://devradar:change_me@db:5432/devradar` | PostgreSQL connection string (used by SQLAlchemy). |
 
@@ -345,8 +346,8 @@ The first run will download the model (~470 MB) and cache it inside the containe
 ## Limitations & Future Improvements
 | Current limitation | Suggested improvement |
 |---|---|
-| ~~Fixed 120 s timeout for Ollama calls~~ | ✅ Fixed: timeout is now `OLLAMA_TIMEOUT_SECONDS` (default 25s), below the backend's 30s. |
-| ~~No similarity threshold – always returns 3 chunks~~ | ✅ Fixed: `/chat` filters by `MIN_SIMILARITY` and answers *"Không tìm thấy trong tài liệu"* when nothing passes. |
+| ~~Fixed 120 s timeout for Ollama calls~~ | ✅ Fixed: per-call timeouts - `OLLAMA_TIMEOUT_SECONDS` (25s) for chat/index, `SUMMARIZE_TIMEOUT_SECONDS` (120s) for `/summarize`. Both stay below the backend's `AI_TIMEOUT_SECONDS`. |
+| ~~No similarity threshold~~ | ⚠️ Reverted after measurement. A `MIN_SIMILARITY` floor was added, then measured against the real model: the relevant and irrelevant score ranges overlap (an unrelated question scored 0.354 while a question the README answers scored 0.037), so no floor separates them and the floor itself caused *"Không tìm thấy trong tài liệu"* for answerable questions. Retrieval returns the closest chunks and the prompt makes the model refuse when they do not cover the question. `MIN_SIMILARITY` still exists, default 0. |
 | ~~Model embedding loaded at cold start~~ | ✅ Fixed: lazy singleton + the model is baked into the Docker image. |
 | History limited to 6 messages | Persist conversation state in Redis or a DB for multi‑turn sessions exceeding 6 messages. |
 | No rate‑limiting / authentication on the API | Add FastAPI middleware (e.g., `slowapi`) to cap requests per minute and enforce API keys. |
