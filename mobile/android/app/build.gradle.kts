@@ -8,6 +8,9 @@ plugins {
 android {
     namespace = "com.devradar.dev_radar_ai"
     compileSdk = flutter.compileSdkVersion
+    // Not installed on this machine yet; the build stops here until it is.
+    // Removing the line does not help: the transitive `jni` package (pulled in
+    // by path_provider_android) declares the same version from its own module.
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -15,10 +18,6 @@ android {
         isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
-    }
-
-    kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_17.toString()
     }
 
     defaultConfig {
@@ -38,6 +37,14 @@ android {
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
         }
+    }
+}
+
+// AGP 9 deprecates android.kotlinOptions; the Kotlin plugin's own DSL replaces it.
+// Shape taken from Flutter 3.47.5's app template.
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
     }
 }
 

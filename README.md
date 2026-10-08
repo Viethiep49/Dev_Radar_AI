@@ -82,9 +82,9 @@ Flutter App ──REST──▶ Backend (FastAPI, JWT, cron) ──▶ AI Engine
 ## Kiểm thử
 
 ```bash
-cd mobile && flutter analyze && flutter test        # 135 test
-cd backend && pytest                                 # 266 test
-cd ai-engine && pytest tests                         # 15 test
+cd mobile && flutter analyze && flutter test        # 147 test
+cd backend && pytest                                 # 276 test
+cd ai-engine && pytest tests                         # 21 test
 cd video-engine && pytest                            # 38 test
 ```
 
