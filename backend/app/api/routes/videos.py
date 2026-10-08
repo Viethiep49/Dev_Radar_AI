@@ -5,6 +5,7 @@ URL to the OS share sheet, which cannot attach an Authorization header. The job_
 is a UUID4 hex (122 random bits) and acts as the capability.
 """
 
+import logging
 import re
 from pathlib import Path
 from uuid import uuid4
@@ -23,10 +24,13 @@ from app.schemas.videos import RoadmapVideoOut
 from app.services import video_client
 from app.services.video_spec import build_roadmap_spec
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/videos", tags=["videos"])
 
 JOB_ID_PATTERN = re.compile(r"[A-Za-z0-9_-]{1,64}")
 NOT_FOUND_MESSAGE = "Không tìm thấy video"
+MISSING_FILE_MESSAGE = "Không đọc được video vừa tạo, vui lòng thử lại sau"
 
 
 @router.post("/roadmap", response_model=RoadmapVideoOut)
@@ -39,7 +43,17 @@ def create_roadmap_video(
     job_id = uuid4().hex
 
     spec = build_roadmap_spec(job_id, current_user.display_name, rows)
+    # Hand the pooled connection back before rendering: the call blocks for 30s-1min,
+    # and holding a connection that long can exhaust QueuePool for every other route.
+    db.rollback()
+
     result = video_client.render(spec)
+
+    # The engine answers 200 but writes into the volume we mount; if that volume is
+    # missing or misnamed we would otherwise return a URL that 404s forever.
+    if not (Path(settings.video_output_dir) / f"{job_id}.mp4").is_file():
+        logger.error("Video engine reported %s but no file is mounted at %s", result.get("path"), job_id)
+        raise AppError(502, ErrorCode.UPSTREAM_ERROR, MISSING_FILE_MESSAGE)
 
     db.add(
         GeneratedVideo(

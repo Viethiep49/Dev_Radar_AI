@@ -5,8 +5,9 @@
 - Timeout                      -> AppError(504, UPSTREAM_TIMEOUT)
 - Any other failure / non-2xx  -> AppError(502, UPSTREAM_ERROR)
 
-The engine serves one render at a time (single uvicorn worker, blocking pipeline),
-so two concurrent requests serialize and the second can cross video_timeout_seconds.
+The engine's /render offloads its pipeline to a thread, so concurrent requests run
+in parallel and compete for the same CPU: under load more than one can cross
+video_timeout_seconds at once, not just the one that arrived second.
 """
 
 import logging

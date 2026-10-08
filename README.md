@@ -76,15 +76,16 @@ Flutter App ──REST──▶ Backend (FastAPI, JWT, cron) ──▶ AI Engine
 | `mobile/` | App Flutter – xem [mobile/README.md](mobile/README.md) |
 | `backend/` | REST API FastAPI, SQLAlchemy, Alembic, APScheduler |
 | `ai-engine/` | Tóm tắt README + RAG (sentence-transformers, pgvector, Ollama) |
-| `video-engine/` | Dịch vụ tạo video (tuỳ chọn, profile `video`) – [VIDEO_GENERATOR.md](VIDEO_GENERATOR.md) |
+| `video-engine/` | Dịch vụ tạo video (backend gọi qua `VIDEO_ENGINE_URL`) – [VIDEO_GENERATOR.md](VIDEO_GENERATOR.md) |
 | `bao_cao/` | Báo cáo, slide và script dựng lại (`tao_bao_cao/`, `tao_slide/`) |
 
 ## Kiểm thử
 
 ```bash
 cd mobile && flutter analyze && flutter test        # 135 test
-cd backend && pytest                                 # 240 test
+cd backend && pytest                                 # 266 test
 cd ai-engine && pytest tests                         # 15 test
+cd video-engine && pytest                            # 38 test
 ```
 
 Quy trình làm việc nhóm: [CONTRIBUTING.md](CONTRIBUTING.md).

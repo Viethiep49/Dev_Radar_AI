@@ -1,5 +1,8 @@
 """The /videos routes: on-demand render and public MP4 serving."""
 
+import json
+from pathlib import Path
+
 import httpx
 import pytest
 
@@ -17,6 +20,20 @@ def assert_error(response, status_code: int, code: str):
     body = response.json()
     assert set(body) == {"error"}
     assert body["error"]["code"] == code
+
+
+@pytest.fixture(autouse=True)
+def video_dir(tmp_path, monkeypatch) -> Path:
+    """Point the shared volume at a temp dir, so no test touches /data/videos."""
+    monkeypatch.setattr(settings, "video_output_dir", str(tmp_path))
+    return tmp_path
+
+
+def rendered(request: httpx.Request) -> httpx.Response:
+    """Answer like the real engine: 200 plus the MP4 dropped where we look for it."""
+    job_id = json.loads(request.content)["job_id"]
+    (Path(settings.video_output_dir) / f"{job_id}.mp4").write_bytes(b"fake mp4 bytes")
+    return httpx.Response(200, json=RESULT)
 
 
 @pytest.fixture
@@ -60,7 +77,7 @@ def engine(monkeypatch):
 
 
 def test_post_roadmap_renders_and_returns_a_relative_url(client, auth_headers, db, roadmap, engine):
-    engine(lambda request: httpx.Response(200, json=RESULT))
+    engine(rendered)
 
     response = client.post(f"{URL}/roadmap", headers=auth_headers)
 
@@ -98,6 +115,29 @@ def test_post_roadmap_engine_timeout_is_504(client, auth_headers, roadmap, engin
 
 def test_post_roadmap_engine_error_is_502(client, auth_headers, roadmap, engine):
     engine(lambda request: httpx.Response(500, json={"detail": "boom"}))
+
+    assert_error(client.post(f"{URL}/roadmap", headers=auth_headers), 502, "UPSTREAM_ERROR")
+
+
+def test_post_roadmap_releases_the_db_connection_while_rendering(client, auth_headers, db, roadmap, engine):
+    """A render blocks for 30s-1min. Holding a pooled connection that whole time
+    can exhaust QueuePool and 500 every unrelated endpoint, so the transaction
+    must be closed before the engine is called."""
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["in_transaction"] = db.in_transaction()
+        return rendered(request)
+
+    engine(handler)
+
+    assert client.post(f"{URL}/roadmap", headers=auth_headers).status_code == 200
+    assert seen["in_transaction"] is False
+
+
+def test_post_roadmap_502_when_the_mp4_is_not_in_the_shared_volume(client, auth_headers, roadmap, engine, video_dir):
+    """A volume/path mismatch would otherwise answer 200 with a URL that 404s forever."""
+    engine(lambda request: httpx.Response(200, json=RESULT))
 
     assert_error(client.post(f"{URL}/roadmap", headers=auth_headers), 502, "UPSTREAM_ERROR")
 
