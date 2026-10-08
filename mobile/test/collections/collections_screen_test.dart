@@ -72,4 +72,27 @@ void main() {
     expect(find.textContaining('Đang offline'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('the create-video button belongs to the learning segment only', (tester) async {
+    await tester.pumpWidget(app());
+    await tester.pumpAndSettle();
+
+    // The header action is scaled to 0 (not removed) for the other segments.
+    double videoScale() => tester
+        .widget<AnimatedScale>(
+          find.ancestor(
+            of: find.byIcon(Icons.movie_creation_outlined),
+            matching: find.byType(AnimatedScale),
+          ),
+        )
+        .scale;
+
+    expect(videoScale(), 0); // Bộ sưu tập tab
+
+    await tester.tap(find.text('Lộ trình'));
+    await tester.pumpAndSettle();
+
+    expect(videoScale(), 1);
+    expect(find.byTooltip('Tạo video tổng kết lộ trình'), findsOneWidget);
+  });
 }
