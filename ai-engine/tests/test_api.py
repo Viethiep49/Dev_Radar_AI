@@ -65,8 +65,12 @@ def test_readme_excerpt_without_setup_section_falls_back_to_top():
 
 
 def test_routes_are_registered():
-    """Regression test for the missing include_router() call."""
-    paths = {route.path for route in app.routes}
+    """Regression test for the missing include_router() call.
+
+    Reads the OpenAPI schema instead of app.routes: since starlette 1.x an
+    included router shows up as one _IncludedRouter entry with no .path.
+    """
+    paths = set(app.openapi()["paths"])
     assert {"/summarize", "/index", "/chat", "/health"} <= paths
 
 
