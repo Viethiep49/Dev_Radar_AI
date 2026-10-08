@@ -20,6 +20,8 @@ services:
     build: ./backend
     ports:
       - "${BACKEND_PORT:-8080}:8080"
+    volumes:
+      - video_data:/data/videos:ro
     environment:
       DATABASE_URL: postgresql+psycopg://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}
       JWT_SECRET: ${JWT_SECRET}
@@ -29,6 +31,8 @@ services:
       GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
       GITHUB_REDIRECT_URI: ${GITHUB_REDIRECT_URI:-}
       AI_ENGINE_URL: ${AI_ENGINE_URL:-}
+      VIDEO_ENGINE_URL: ${VIDEO_ENGINE_URL:-http://video-engine:9000}
+      VIDEO_TIMEOUT_SECONDS: ${VIDEO_TIMEOUT_SECONDS:-300}
       ENABLE_SCHEDULER: ${ENABLE_SCHEDULER:-true}
     depends_on:
       db:
@@ -103,10 +107,12 @@ services:
         echo 'Đã tải xong!';
       "
 
+  # Renders MP4s into video_data. The backend mounts the same volume read-only
+  # and serves the files. No healthcheck/depends_on on purpose: if this image is
+  # slow to build or crashes, it must not hold up the API - video_client already
+  # maps a connection failure to 502.
   video-engine:
     build: ./video-engine
-    profiles:
-      - video
     expose:
       - "9000"
     volumes:

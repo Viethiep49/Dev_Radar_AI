@@ -37,8 +37,8 @@ if /i "%~1"=="ai" (
     echo [1/4] Bat DB + backend + AI engine + Ollama ^(lan dau tai model se lau^)...
     docker compose up -d --build
 ) else (
-    echo [1/4] Bat DB + backend...
-    docker compose up -d --build db backend
+    echo [1/4] Bat DB + backend + video engine...
+    docker compose up -d --build db backend video-engine
 )
 if errorlevel 1 (
     echo [!] docker compose loi. Xem thong bao phia tren.
