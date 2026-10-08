@@ -163,6 +163,26 @@ def test_chat_without_relevant_chunks(client, mock_embedder, mock_db, mock_ollam
     mock_ollama.assert_not_called()
 
 
+def test_chat_does_not_filter_chunks_by_similarity(client, mock_embedder, mock_db, mock_ollama):
+    """The similarity floor must stay off.
+
+    Measured against the real model, the two groups overlap: on one repo an
+    unrelated question scored 0.354 while a question the README answers scored
+    0.037. No floor separates them, so any value in use drops correct chunks and
+    /chat replies "Không tìm thấy trong tài liệu" for questions it could answer.
+    Retrieval returns the closest chunks and the LLM judges relevance: the prompt
+    already tells it to refuse when the documents do not cover the question.
+    """
+    mock_ollama.return_value = "Câu trả lời."
+
+    client.post("/chat", json={
+        "repo_id": 1, "full_name": "test/repo", "question": "Repo này dùng để làm gì?", "history": [],
+    })
+
+    params = mock_db.execute.call_args[0][1]
+    assert params["max_distance"] >= 1.0  # 1.0 = every chunk with similarity >= 0 is kept
+
+
 def test_chat_keeps_ollama_timeout_status(client, mock_embedder, mock_db, mock_ollama):
     """A 504 from call_ollama must not become a 500 (issue #7)."""
     from fastapi import HTTPException

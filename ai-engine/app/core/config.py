@@ -16,6 +16,11 @@ WARMUP_TIMEOUT_SECONDS = float(os.getenv("WARMUP_TIMEOUT_SECONDS", "300"))
 
 DATABASE_URL = os.environ["DATABASE_URL"]
 
-# Minimum cosine similarity (1 - cosine distance) for a chunk to be used as
-# context. Chunks below it are ignored, so the model can answer "not found".
-MIN_SIMILARITY = float(os.getenv("MIN_SIMILARITY", "0.35"))
+# Floor on cosine similarity (1 - cosine distance) for a chunk to be used as
+# context. Off by default (0.0 = keep every chunk that is not opposite in
+# meaning): measured on paraphrase-multilingual-MiniLM-L12-v2 the relevant and
+# irrelevant groups overlap, so any higher floor drops chunks that do answer the
+# question. An unrelated question scored 0.354 on one repo while a question the
+# README answers scored 0.037. The chat prompt is what makes the model say
+# "Không tìm thấy trong tài liệu" when the retrieved text does not cover it.
+MIN_SIMILARITY = float(os.getenv("MIN_SIMILARITY", "0"))
