@@ -11,6 +11,7 @@ import '../../presentation/screens/main/main_navigation_screen.dart';
 import '../../presentation/screens/notes/note_editor_screen.dart';
 import '../../presentation/screens/notifications/notifications_screen.dart';
 import '../../presentation/screens/onboarding/onboarding_screen.dart';
+import '../../presentation/screens/roadmap/roadmap_video_screen.dart';
 import '../../presentation/screens/splash/splash_screen.dart';
 import '../../presentation/screens/watchlist/watchlist_screen.dart';
 
@@ -83,6 +84,10 @@ class AppRouter {
       ),
       GoRoute(path: '/notifications', pageBuilder: (context, state) => _page(state, const NotificationsScreen())),
       GoRoute(path: '/watchlist', pageBuilder: (context, state) => _page(state, const WatchlistScreen())),
+      GoRoute(
+        path: '/roadmap/video',
+        pageBuilder: (context, state) => _page(state, const RoadmapVideoScreen()),
+      ),
     ],
   );
 }

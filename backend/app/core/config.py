@@ -33,7 +33,13 @@ class Settings(BaseSettings):
         return [value.strip() for value in self.google_client_ids.split(",") if value.strip()]
 
     ai_engine_url: str = ""
-    ai_timeout_seconds: int = 30
+    # A summarize reads a whole README and can take ~2 minutes on a small GPU;
+    # chat and index answer in seconds and are unaffected by the higher ceiling.
+    ai_timeout_seconds: int = 150
+
+    video_engine_url: str = ""  # empty = the video feature is off
+    video_timeout_seconds: int = 300  # a render takes 30s-1min; this is the ceiling
+    video_output_dir: str = "/data/videos"  # shared volume, mounted read-only
 
     enable_scheduler: bool = False
 

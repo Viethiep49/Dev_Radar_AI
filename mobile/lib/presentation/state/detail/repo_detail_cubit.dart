@@ -119,6 +119,27 @@ class RepoDetailCubit extends Cubit<RepoDetailState> {
     }
   }
 
+  /// Asks the backend to generate the summary now, then reloads so it appears.
+  /// Blocks for up to ~2 minutes; the button shows a spinner for that long.
+  Future<void> generateSummary() async {
+    if (state.detail == null || state.summaryBusy) return;
+    emit(state.copyWith(summaryBusy: true));
+    try {
+      await repoRepository.generateSummary(repoId);
+      if (isClosed) return;
+      emit(state.copyWith(summaryBusy: false));
+      await _loadDetail(showLoading: false);
+      if (isClosed) return;
+      emit(state.copyWith(feedback: _feedback('Đã tạo tóm tắt AI')));
+    } catch (e) {
+      if (isClosed) return;
+      emit(state.copyWith(
+        summaryBusy: false,
+        feedback: _feedback(e.toString(), isError: true),
+      ));
+    }
+  }
+
   DetailFeedback _feedback(String message, {bool isError = false}) =>
       DetailFeedback(++_feedbackId, message, isError: isError);
 }

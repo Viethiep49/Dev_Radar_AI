@@ -37,8 +37,8 @@ if /i "%~1"=="ai" (
     echo [1/4] Bat DB + backend + AI engine + Ollama ^(lan dau tai model se lau^)...
     docker compose up -d --build
 ) else (
-    echo [1/4] Bat DB + backend...
-    docker compose up -d --build db backend
+    echo [1/4] Bat DB + backend + video engine...
+    docker compose up -d --build db backend video-engine
 )
 if errorlevel 1 (
     echo [!] docker compose loi. Xem thong bao phia tren.
@@ -79,7 +79,7 @@ if errorlevel 1 (
 
 echo.
 echo [4/4] Chon noi chay app:
-echo     1. Chrome ^(xem nhanh tren trinh duyet^)  [mac dinh]
+echo     1. Edge ^(xem nhanh tren trinh duyet^)  [mac dinh]
 echo     2. May ao Android ^(emulator^)
 echo     3. Dien thoai that cung Wi-Fi
 echo     4. Chi bat server, khong chay app
@@ -87,20 +87,20 @@ set "CHOICE=1"
 set /p "CHOICE=Chon (1-4): "
 
 cd mobile
-call "%FLUTTER%" pub get >nul
+call %FLUTTER% pub get >nul
 if "%CHOICE%"=="2" (
     call :start_emulator
-    call "%FLUTTER%" run -d emulator --dart-define=API_BASE_URL=http://10.0.2.2:%PORT%
+    call %FLUTTER% run -d emulator --dart-define=API_BASE_URL=http://10.0.2.2:%PORT%
 ) else if "%CHOICE%"=="3" (
     set "LANIP="
     for /f "tokens=2 delims=:" %%i in ('ipconfig ^| findstr /c:"IPv4"') do if not defined LANIP set "LANIP=%%i"
     set "LANIP=!LANIP: =!"
     echo IP may tinh: !LANIP!  ^(dien thoai phai cung Wi-Fi^)
-    call "%FLUTTER%" run --dart-define=API_BASE_URL=http://!LANIP!:%PORT%
+    call %FLUTTER% run --dart-define=API_BASE_URL=http://!LANIP!:%PORT%
 ) else if "%CHOICE%"=="4" (
     echo Server dang chay. API docs: http://localhost:%PORT%/docs  ^|  Tat: run.bat stop
 ) else (
-    call "%FLUTTER%" run -d chrome --dart-define=API_BASE_URL=http://localhost:%PORT%
+    call %FLUTTER% run -d edge --dart-define=API_BASE_URL=http://localhost:%PORT%
 )
 exit /b
 

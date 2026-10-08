@@ -14,7 +14,8 @@ Service xử lý ngôn ngữ tự nhiên và vector cho Dev Radar AI, được x
   - `DATABASE_URL`: Đường dẫn Postgres (Bắt buộc).
   - `OLLAMA_URL`: URL tới máy chủ Ollama (mặc định: `http://ollama:11434/api/generate`).
   - `OLLAMA_MODEL`: Mô hình sinh văn bản (mặc định: `qwen2.5:7b`).
-  - `OLLAMA_TIMEOUT_SECONDS`: Thời gian chờ tối đa khi gọi Ollama (mặc định: `25`).
+  - `OLLAMA_TIMEOUT_SECONDS`: Thời gian chờ tối đa khi gọi Ollama cho `/chat` và `/index` (mặc định: `25`).
+  - `SUMMARIZE_TIMEOUT_SECONDS`: Ngân sách riêng cho `/summarize` vì nó đọc cả README (mặc định: `120`).
   - `MIN_SIMILARITY`: Ngưỡng cosine similarity tối thiểu để lọc chunk (mặc định: `0.35`).
 
 ## Hiệu năng

@@ -51,6 +51,7 @@ class _CollectionsScreenState extends State<CollectionsScreen> {
               _Header(
                 segment: _segment,
                 onCreate: () => _CollectionsTab.create(context),
+                onCreateVideo: () => context.push('/roadmap/video'),
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
@@ -118,8 +119,9 @@ class _CollectionsScreenState extends State<CollectionsScreen> {
 class _Header extends StatelessWidget {
   final _Segment segment;
   final VoidCallback onCreate;
+  final VoidCallback onCreateVideo;
 
-  const _Header({required this.segment, required this.onCreate});
+  const _Header({required this.segment, required this.onCreate, required this.onCreateVideo});
 
   @override
   Widget build(BuildContext context) {
@@ -150,6 +152,18 @@ class _Header extends StatelessWidget {
               ],
             ),
           ),
+          AnimatedScale(
+            scale: segment == _Segment.learning ? 1 : 0,
+            duration: const Duration(milliseconds: 200),
+            child: GlassIconButton(
+              icon: Icons.movie_creation_outlined,
+              tooltip: 'Tạo video tổng kết lộ trình',
+              enableGlow: segment == _Segment.learning,
+              glowColor: AppColors.secondary,
+              onPressed: segment == _Segment.learning ? onCreateVideo : () {},
+            ),
+          ),
+          const SizedBox(width: 6),
           AnimatedScale(
             scale: segment == _Segment.collections ? 1 : 0,
             duration: const Duration(milliseconds: 200),

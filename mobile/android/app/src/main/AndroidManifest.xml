@@ -4,10 +4,14 @@
     <!-- Local notifications: show (Android 13+) and re-schedule the study reminder after a reboot. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <!-- targetSdk 36 blocks cleartext by default. dart:io ignores that, but
+         video_player plays through ExoPlayer on the Java stack, so an
+         http://10.0.2.2:8080 video would fail with "CLEARTEXT not permitted". -->
     <application
         android:label="dev_radar_ai"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:usesCleartextTraffic="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"

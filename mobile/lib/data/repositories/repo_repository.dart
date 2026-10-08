@@ -27,6 +27,11 @@ abstract class RepoRepository {
 
   /// Cached per repo id.
   Future<Cached<List<StarPointModel>>> getStarHistory(int id, {int days = 30});
+
+  /// Asks the backend to generate this repo's AI summary now. Blocks for up to
+  /// ~2 minutes. Not cached: the caller reloads the detail afterwards, which
+  /// refreshes the cache.
+  Future<void> generateSummary(int id);
 }
 
 class RepoRepositoryImpl implements RepoRepository {
@@ -109,5 +114,10 @@ class RepoRepositoryImpl implements RepoRepository {
       parse: (json) =>
           (json as List<dynamic>).map((e) => StarPointModel.fromJson(e as Map<String, dynamic>)).toList(),
     );
+  }
+
+  @override
+  Future<void> generateSummary(int id) async {
+    await remoteDataSource.generateSummary(id);
   }
 }

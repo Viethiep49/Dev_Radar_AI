@@ -1,3 +1,5 @@
+import 'package:dio/dio.dart';
+
 import '../../../core/constants/api_constants.dart';
 import '../../../core/network/api_client.dart';
 
@@ -24,6 +26,10 @@ abstract class RepoRemoteDataSource {
 
   /// GET /repos/{id}/stars?days= -> [{date, stars}], oldest first.
   Future<List<dynamic>> getStarHistory(int id, {int days = 30});
+
+  /// POST /repos/{id}/summary -> the generated RepoSummaryOut.
+  /// Blocks server-side while the AI reads the README, hence the longer timeout.
+  Future<Map<String, dynamic>> generateSummary(int id);
 }
 
 class RepoRemoteDataSourceImpl implements RepoRemoteDataSource {
@@ -76,5 +82,14 @@ class RepoRemoteDataSourceImpl implements RepoRemoteDataSource {
       queryParameters: {'days': days},
     );
     return response.data as List<dynamic>;
+  }
+
+  @override
+  Future<Map<String, dynamic>> generateSummary(int id) async {
+    final response = await apiClient.post(
+      '${ApiConstants.repos}/$id/summary',
+      options: Options(receiveTimeout: ApiConstants.slowRequestTimeout),
+    );
+    return response.data as Map<String, dynamic>;
   }
 }

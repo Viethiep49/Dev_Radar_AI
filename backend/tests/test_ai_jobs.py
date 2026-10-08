@@ -72,3 +72,30 @@ def test_generate_summaries_with_fallback(db, monkeypatch):
 
 def test_jobs_registered():
     assert [job["id"] for job in ai_jobs.JOBS] == ["generate_summaries"]
+
+
+def test_summarize_repo_handles_a_concurrent_insert(db, monkeypatch):
+    """The 30-minute cron and an on-demand request can pick the same repo at once.
+
+    repo_summaries.repo_id is unique, so the loser must hand back the winner's
+    row rather than raise IntegrityError (a 500 for the user).
+    """
+    repo = make_repo(db, 1)
+    db.add(RepoSummary(repo_id=repo.id, summary="người thắng", quickstart=None, model="m"))
+    db.commit()
+
+    monkeypatch.setattr(
+        ai_client, "summarize",
+        lambda repo_id, full_name, readme: {"summary": "kẻ thua", "quickstart": None, "model": "m"},
+    )
+    indexed = []
+    monkeypatch.setattr(
+        ai_client, "index",
+        lambda repo_id, full_name, documents: indexed.append(repo_id) or {"chunks": 1},
+    )
+
+    summary = ai_jobs.summarize_repo(db, repo.id, repo.full_name, repo.readme)
+
+    assert summary.summary == "người thắng"
+    assert len(db.scalars(select(RepoSummary).where(RepoSummary.repo_id == repo.id)).all()) == 1
+    assert indexed == [repo.id]  # indexing is idempotent, so the loser still runs it

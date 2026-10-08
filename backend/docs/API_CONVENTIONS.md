@@ -129,7 +129,9 @@ File dùng chung khác theo feature:
 
 Dùng chung (mọi feature được import, không ai tự đổi): `schemas/repo_brief.py` (`RepoBrief`), `services/repo_service.py` → `get_repo_or_404`, chữ ký hàm trong `services/github_client.py` (feature repos viết phần thân).
 
-Tóm tắt AI được lưu trong `repo_summaries`; router `/repos` chỉ **đọc** bảng này để trả về.
+Tóm tắt AI được lưu trong `repo_summaries`. Router `/repos` chỉ **đọc** bảng này, trừ
+`POST /repos/{id}/summary` — endpoint tạo theo yêu cầu; nó uỷ quyền cho
+`repo_service.generate_summary`, nơi gọi `app.jobs.ai_jobs.summarize_repo`.
 
 ## 7. Cách một feature thêm endpoint
 

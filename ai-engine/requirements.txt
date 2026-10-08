@@ -1,9 +1,12 @@
-fastapi==0.115.6
-uvicorn[standard]==0.34.0
-pydantic==2.10.4
+# Pinned to the same versions as backend/requirements.txt so one machine can run
+# both test suites. psycopg2-binary stays: it is a different package from the
+# backend's psycopg, the two coexist, and database.py has no driver-specific code.
+fastapi==0.141.1
+uvicorn[standard]==0.53.0
+pydantic==2.13.5
 httpx==0.28.1
 sentence-transformers==3.3.1
-sqlalchemy==2.0.36
+sqlalchemy==2.0.54
 psycopg2-binary==2.9.10
 pgvector==0.3.6
 langchain-text-splitters==0.3.4

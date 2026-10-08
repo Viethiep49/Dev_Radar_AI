@@ -147,4 +147,61 @@ void main() {
       expect(cubit.state.feedback?.isError, isTrue);
     },
   );
+
+  blocTest<RepoDetailCubit, RepoDetailState>(
+    'generateSummary posts, then reloads so the summary appears',
+    build: () {
+      when(() => repos.generateSummary(1)).thenAnswer((_) async {});
+      var loads = 0;
+      when(() => repos.getRepoDetail(1)).thenAnswer((_) async {
+        loads++;
+        return Cached(RepoDetailModel.fromJson(detailJson(1, hasSummary: loads > 1)));
+      });
+      return build();
+    },
+    act: (cubit) async {
+      await cubit.load();
+      await cubit.generateSummary();
+    },
+    verify: (cubit) {
+      expect(cubit.state.detail?.hasSummary, isTrue);
+      expect(cubit.state.summaryBusy, isFalse);
+      expect(cubit.state.feedback?.isError, isFalse);
+      verify(() => repos.generateSummary(1)).called(1);
+    },
+  );
+
+  blocTest<RepoDetailCubit, RepoDetailState>(
+    'generateSummary clears the busy flag and reports a failure',
+    build: () {
+      when(() => repos.generateSummary(1)).thenThrow(
+        ApiException('Tạo video quá lâu, vui lòng thử lại', statusCode: 504),
+      );
+      return build();
+    },
+    act: (cubit) async {
+      await cubit.load();
+      await cubit.generateSummary();
+    },
+    verify: (cubit) {
+      expect(cubit.state.summaryBusy, isFalse);
+      expect(cubit.state.feedback?.isError, isTrue);
+      expect(cubit.state.feedback?.message, 'Tạo video quá lâu, vui lòng thử lại');
+    },
+  );
+
+  blocTest<RepoDetailCubit, RepoDetailState>(
+    'generateSummary ignores a second tap while one is running',
+    build: () {
+      when(() => repos.generateSummary(1)).thenAnswer((_) async {});
+      return build();
+    },
+    act: (cubit) async {
+      await cubit.load();
+      final first = cubit.generateSummary();
+      await cubit.generateSummary(); // must be a no-op: the first is still busy
+      await first;
+    },
+    verify: (_) => verify(() => repos.generateSummary(1)).called(1),
+  );
 }

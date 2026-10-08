@@ -1,4 +1,5 @@
 import json
+import re
 from unittest.mock import MagicMock, patch
 
 from app.api.v1 import README_MAX_CHARS, _readme_excerpt
@@ -65,8 +66,12 @@ def test_readme_excerpt_without_setup_section_falls_back_to_top():
 
 
 def test_routes_are_registered():
-    """Regression test for the missing include_router() call."""
-    paths = {route.path for route in app.routes}
+    """Regression test for the missing include_router() call.
+
+    Reads the OpenAPI schema instead of app.routes: since starlette 1.x an
+    included router shows up as one _IncludedRouter entry with no .path.
+    """
+    paths = set(app.openapi()["paths"])
     assert {"/summarize", "/index", "/chat", "/health"} <= paths
 
 
@@ -159,6 +164,26 @@ def test_chat_without_relevant_chunks(client, mock_embedder, mock_db, mock_ollam
     mock_ollama.assert_not_called()
 
 
+def test_chat_does_not_filter_chunks_by_similarity(client, mock_embedder, mock_db, mock_ollama):
+    """The similarity floor must stay off.
+
+    Measured against the real model, the two groups overlap: on one repo an
+    unrelated question scored 0.354 while a question the README answers scored
+    0.037. No floor separates them, so any value in use drops correct chunks and
+    /chat replies "Không tìm thấy trong tài liệu" for questions it could answer.
+    Retrieval returns the closest chunks and the LLM judges relevance: the prompt
+    already tells it to refuse when the documents do not cover the question.
+    """
+    mock_ollama.return_value = "Câu trả lời."
+
+    client.post("/chat", json={
+        "repo_id": 1, "full_name": "test/repo", "question": "Repo này dùng để làm gì?", "history": [],
+    })
+
+    params = mock_db.execute.call_args[0][1]
+    assert params["max_distance"] >= 1.0  # 1.0 = every chunk with similarity >= 0 is kept
+
+
 def test_chat_keeps_ollama_timeout_status(client, mock_embedder, mock_db, mock_ollama):
     """A 504 from call_ollama must not become a 500 (issue #7)."""
     from fastapi import HTTPException
@@ -186,3 +211,89 @@ def test_chunks_fit_embedding_model_max_seq_length():
     chunks = chunker.split_text(text)
     assert len(chunks) > 1
     assert max(len(model.tokenizer(c)["input_ids"]) for c in chunks) <= model.max_seq_length
+
+
+# ---------- timeouts ----------
+
+def test_summarize_gets_its_own_longer_timeout(client, mock_ollama):
+    """Summarising reads a whole README and can take well over the global 25s.
+
+    Chat keeps the short global timeout so a stuck Ollama fails fast there; only
+    /summarize asks for the longer budget.
+    """
+    from app.core.config import OLLAMA_TIMEOUT_SECONDS, SUMMARIZE_TIMEOUT_SECONDS
+
+    mock_ollama.return_value = json.dumps({"summary": "s", "quickstart": "q"})
+
+    client.post("/summarize", json={"repo_id": 1, "full_name": "t/r", "readme": "# x"})
+
+    assert SUMMARIZE_TIMEOUT_SECONDS > OLLAMA_TIMEOUT_SECONDS
+    assert mock_ollama.call_args.kwargs["timeout"] == SUMMARIZE_TIMEOUT_SECONDS
+
+
+def test_chat_keeps_the_short_global_timeout(client, mock_embedder, mock_db, mock_ollama):
+    mock_ollama.return_value = "câu trả lời"
+
+    client.post("/chat", json={"repo_id": 1, "full_name": "t/r", "question": "?", "history": []})
+
+    assert mock_ollama.call_args.kwargs.get("timeout") is None  # falls back to the global
+
+
+def _chat_prompt(mock_ollama) -> str:
+    """The prompt the /chat handler handed to Ollama."""
+    return mock_ollama.call_args.args[0]
+
+
+def test_chat_prompt_keeps_the_language_rule_next_to_the_generation_point(
+    client, mock_embedder, mock_db, mock_ollama
+):
+    """READMEs are English and qwen2.5 has strong Chinese priors.
+
+    A real request came back in Vietnamese and then switched to
+    "...代码超出限制，我已经省略了超出部分。这段Bloc用于在Da...". The rule has to be
+    the instruction closest to generation, and the closing cue has to carry it
+    too: whichever instruction is nearest wins.
+    """
+    mock_ollama.return_value = "câu trả lời"
+
+    client.post("/chat", json={
+        "repo_id": 1, "full_name": "test/repo", "question": "Repo này là gì?", "history": [],
+    })
+
+    prompt = _chat_prompt(mock_ollama)
+    rule = "Viết toàn bộ câu trả lời bằng tiếng Việt"
+    assert rule in prompt
+    assert prompt.index(rule) > prompt.index("</readme>")
+    assert prompt.rstrip().endswith("Trả lời bằng tiếng Việt:")
+
+
+def test_chat_prompt_does_not_name_other_languages(client, mock_embedder, mock_db, mock_ollama):
+    """The rule must be positive-only: name Vietnamese, name nothing else.
+
+    Measured on the live stack, a rule reading "Viết toàn bộ câu trả lời bằng
+    tiếng Việt, không dùng tiếng Trung" made BOTH answers come back fully in
+    Chinese, while the positive-only wording gave 12 of 13 in Vietnamese.
+    Naming a language inside a negation appears to prime it.
+    """
+    mock_ollama.return_value = "câu trả lời"
+
+    client.post("/chat", json={
+        "repo_id": 1, "full_name": "test/repo", "question": "Repo này là gì?", "history": [],
+    })
+
+    prompt = _chat_prompt(mock_ollama)
+    assert "tiếng Trung" not in prompt
+    assert "tiếng Anh" not in prompt
+    assert not re.search(r"[一-鿿]", prompt)
+
+
+def test_chat_prompt_forbids_meta_notes_about_truncation(client, mock_embedder, mock_db, mock_ollama):
+    """The same answer announced that it had omitted part of the content."""
+    mock_ollama.return_value = "câu trả lời"
+
+    client.post("/chat", json={
+        "repo_id": 1, "full_name": "test/repo", "question": "Repo này là gì?", "history": [],
+    })
+
+    prompt = mock_ollama.call_args.args[0]
+    assert "cắt bớt" in prompt or "giới hạn độ dài" in prompt

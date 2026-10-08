@@ -14,8 +14,18 @@ OLLAMA_TIMEOUT_SECONDS = float(os.getenv("OLLAMA_TIMEOUT_SECONDS", "25"))
 # First load of the model in Ollama (only used by the start-up warm-up).
 WARMUP_TIMEOUT_SECONDS = float(os.getenv("WARMUP_TIMEOUT_SECONDS", "300"))
 
+# /summarize reads a whole README and is the slowest call by far, so it gets its
+# own budget. Chat keeps OLLAMA_TIMEOUT_SECONDS above so a stuck Ollama fails
+# fast there (the Flutter client waits 30s for chat).
+SUMMARIZE_TIMEOUT_SECONDS = float(os.getenv("SUMMARIZE_TIMEOUT_SECONDS", "120"))
+
 DATABASE_URL = os.environ["DATABASE_URL"]
 
-# Minimum cosine similarity (1 - cosine distance) for a chunk to be used as
-# context. Chunks below it are ignored, so the model can answer "not found".
-MIN_SIMILARITY = float(os.getenv("MIN_SIMILARITY", "0.35"))
+# Floor on cosine similarity (1 - cosine distance) for a chunk to be used as
+# context. Off by default (0.0 = keep every chunk that is not opposite in
+# meaning): measured on paraphrase-multilingual-MiniLM-L12-v2 the relevant and
+# irrelevant groups overlap, so any higher floor drops chunks that do answer the
+# question. An unrelated question scored 0.354 on one repo while a question the
+# README answers scored 0.037. The chat prompt is what makes the model say
+# "Không tìm thấy trong tài liệu" when the retrieved text does not cover it.
+MIN_SIMILARITY = float(os.getenv("MIN_SIMILARITY", "0"))

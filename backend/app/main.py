@@ -16,6 +16,7 @@ from app.api.routes import (
     preferences,
     repos,
     stats,
+    videos,
     watchlist,
 )
 from app.core.config import settings
@@ -64,6 +65,7 @@ def create_app() -> FastAPI:
         watchlist,
         notifications,
         chat,
+        videos,
     ):
         app.include_router(module.router, prefix=API_PREFIX)
 

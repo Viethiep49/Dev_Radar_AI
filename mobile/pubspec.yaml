@@ -54,6 +54,12 @@ dependencies:
   timezone: ^0.11.1
   flutter_timezone: ^5.1.1
   url_launcher: ^6.3.3
+  # Roadmap video: play the rendered MP4 in a 9:16 frame, then hand it to the OS
+  # share sheet. Both are Android/iOS/macOS/web; Windows has no video_player.
+  video_player: ^2.10.0
+  # 13.x is the first line whose win32 constraint (^6) matches
+  # flutter_secure_storage 11.x; 10-12 pin win32 ^5 and cannot resolve.
+  share_plus: ^13.3.1
 dev_dependencies:
   flutter_test:
     sdk: flutter

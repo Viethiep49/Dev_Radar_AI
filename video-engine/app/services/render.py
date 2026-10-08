@@ -11,8 +11,10 @@ from app.services.timeline import slide_durations, concat_wavs, ffmpeg_args, GAP
 
 def render_job(spec: VideoSpec, out_dir: Path) -> RenderResult:
     size = CANVAS[spec.quality]
-    
-    with TemporaryDirectory() as tmp_str:
+
+    # Scratch inside out_dir: os.replace below is rename(2) and fails with EXDEV
+    # when /tmp and the output volume are different mounts (always true in Docker).
+    with TemporaryDirectory(dir=out_dir) as tmp_str:
         tmp = Path(tmp_str)
         
         audio_paths = []

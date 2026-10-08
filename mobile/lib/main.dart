@@ -21,6 +21,7 @@ import 'data/datasources/remote/notification_remote_datasource.dart';
 import 'data/datasources/remote/preferences_remote_datasource.dart';
 import 'data/datasources/remote/repo_remote_datasource.dart';
 import 'data/datasources/remote/stats_remote_datasource.dart';
+import 'data/datasources/remote/video_remote_datasource.dart';
 import 'data/datasources/remote/watchlist_remote_datasource.dart';
 import 'data/repositories/auth_repository.dart';
 import 'data/repositories/chat_repository.dart';
@@ -31,6 +32,7 @@ import 'data/repositories/notification_repository.dart';
 import 'data/repositories/preferences_repository.dart';
 import 'data/repositories/repo_repository.dart';
 import 'data/repositories/stats_repository.dart';
+import 'data/repositories/video_repository.dart';
 import 'data/repositories/watchlist_repository.dart';
 import 'data/services/release_alert_service.dart';
 import 'presentation/state/auth/auth_bloc.dart';
@@ -73,6 +75,9 @@ void main() async {
       repoRepository: RepoRepositoryImpl(
         remoteDataSource: RepoRemoteDataSourceImpl(apiClient: apiClient),
         cache: cache,
+      ),
+      videoRepository: VideoRepositoryImpl(
+        remoteDataSource: VideoRemoteDataSourceImpl(apiClient: apiClient),
       ),
       chatRepository: ChatRepositoryImpl(
         remoteDataSource: ChatRemoteDataSourceImpl(apiClient: apiClient),
@@ -121,6 +126,7 @@ class DevRadarApp extends StatefulWidget {
   final LocalNotificationService localNotifications;
   final AuthRepository authRepository;
   final RepoRepository repoRepository;
+  final VideoRepository videoRepository;
   final ChatRepository chatRepository;
   final CollectionRepository collectionRepository;
   final NoteRepository noteRepository;
@@ -139,6 +145,7 @@ class DevRadarApp extends StatefulWidget {
     required this.localNotifications,
     required this.authRepository,
     required this.repoRepository,
+    required this.videoRepository,
     required this.chatRepository,
     required this.collectionRepository,
     required this.noteRepository,
@@ -212,6 +219,7 @@ class _DevRadarAppState extends State<DevRadarApp> with WidgetsBindingObserver {
         RepositoryProvider<LocalNotificationService>.value(value: widget.localNotifications),
         RepositoryProvider<AuthRepository>.value(value: widget.authRepository),
         RepositoryProvider<RepoRepository>.value(value: widget.repoRepository),
+        RepositoryProvider<VideoRepository>.value(value: widget.videoRepository),
         RepositoryProvider<ChatRepository>.value(value: widget.chatRepository),
         RepositoryProvider<CollectionRepository>.value(value: widget.collectionRepository),
         RepositoryProvider<NoteRepository>.value(value: widget.noteRepository),
