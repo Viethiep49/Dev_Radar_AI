@@ -19,10 +19,10 @@ from app.api.deps import get_current_user
 from app.core.config import settings
 from app.core.errors import AppError, ErrorCode
 from app.db.session import get_db
-from app.models import GeneratedVideo, User, UserRepo
+from app.models import GeneratedVideo, Repo, User, UserRepo
 from app.schemas.videos import RoadmapVideoOut
 from app.services import video_client
-from app.services.video_spec import build_roadmap_spec
+from app.services.video_spec import build_repo_video_spec, build_roadmap_spec
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +51,58 @@ def create_roadmap_video(
 
     # The engine answers 200 but writes into the volume we mount; if that volume is
     # missing or misnamed we would otherwise return a URL that 404s forever.
+    if not (Path(settings.video_output_dir) / f"{job_id}.mp4").is_file():
+        logger.error("Video engine reported %s but no file is mounted at %s", result.get("path"), job_id)
+        raise AppError(502, ErrorCode.UPSTREAM_ERROR, MISSING_FILE_MESSAGE)
+
+    db.add(
+        GeneratedVideo(
+            job_id=job_id,
+            user_id=current_user.id,
+            duration_seconds=result["duration_seconds"],
+            size_bytes=result["size_bytes"],
+        )
+    )
+    db.commit()
+
+    return RoadmapVideoOut(
+        job_id=job_id,
+        url=f"/api/v1/videos/{job_id}",
+        duration_seconds=result["duration_seconds"],
+        size_bytes=result["size_bytes"],
+    )
+
+
+@router.post("/repos/{repo_id}", response_model=RoadmapVideoOut)
+def create_repo_video(
+    repo_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Render a detailed analysis video of a specific repo. Blocks for 30s-1min."""
+    repo = db.get(Repo, repo_id)
+    if repo is None:
+        raise AppError(404, ErrorCode.NOT_FOUND, "Không tìm thấy repository")
+
+    summary_text = None
+    quickstart_text = None
+    if repo.summary:
+        summary_text = repo.summary.summary
+        quickstart_text = repo.summary.quickstart
+    elif repo.readme:
+        from app.services import fallback_ai
+        res = fallback_ai.summarize(repo.id, repo.full_name, repo.readme)
+        summary_text = res.get("summary")
+        quickstart_text = res.get("quickstart")
+
+    job_id = uuid4().hex
+    spec = build_repo_video_spec(job_id, repo, summary_text, quickstart_text)
+
+    # Hand the pooled connection back before rendering
+    db.rollback()
+
+    result = video_client.render(spec)
+
     if not (Path(settings.video_output_dir) / f"{job_id}.mp4").is_file():
         logger.error("Video engine reported %s but no file is mounted at %s", result.get("path"), job_id)
         raise AppError(502, ErrorCode.UPSTREAM_ERROR, MISSING_FILE_MESSAGE)

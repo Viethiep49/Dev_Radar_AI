@@ -45,3 +45,10 @@ def test_spell_text_treats_comma_with_non_three_digits_as_decimal():
 
 def test_spell_text_leaves_non_numeric_text_untouched():
     assert spell_text("Lộ trình của tôi") == "Lộ trình của tôi"
+
+
+def test_spell_text_transcribes_brand_names():
+    assert spell_text("Chào mừng đến với Dev Radar AI") == "Chào mừng đến với đép ra đa ây ai"
+    assert spell_text("Khám phá trên Dev Radar") == "Khám phá trên đép ra đa ây ai"
+    assert spell_text("dev radar ai là nền tảng 10 điểm") == "đép ra đa ây ai là nền tảng mười điểm"
+
