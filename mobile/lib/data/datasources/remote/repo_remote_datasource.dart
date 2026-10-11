@@ -88,7 +88,10 @@ class RepoRemoteDataSourceImpl implements RepoRemoteDataSource {
   Future<Map<String, dynamic>> generateSummary(int id) async {
     final response = await apiClient.post(
       '${ApiConstants.repos}/$id/summary',
-      options: Options(receiveTimeout: ApiConstants.slowRequestTimeout),
+      options: Options(
+        sendTimeout: ApiConstants.slowRequestTimeout,
+        receiveTimeout: ApiConstants.slowRequestTimeout,
+      ),
     );
     return response.data as Map<String, dynamic>;
   }

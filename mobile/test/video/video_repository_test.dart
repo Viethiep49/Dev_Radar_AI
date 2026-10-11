@@ -35,4 +35,20 @@ void main() {
 
     expect(repository.createRoadmapVideo(), throwsA(isA<Exception>()));
   });
+
+  test('parses the repo render result', () async {
+    when(() => remote.createRepoVideo(42)).thenAnswer((_) async => {
+          'job_id': 'repo_xyz',
+          'url': '/api/v1/videos/repo_xyz',
+          'duration_seconds': 25.5,
+          'size_bytes': 850000,
+        });
+
+    final video = await repository.createRepoVideo(42);
+
+    expect(video.jobId, 'repo_xyz');
+    expect(video.url, '/api/v1/videos/repo_xyz');
+    expect(video.durationSeconds, closeTo(25.5, 0.001));
+    expect(video.sizeBytes, 850000);
+  });
 }

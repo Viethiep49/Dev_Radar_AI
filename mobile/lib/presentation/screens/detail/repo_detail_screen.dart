@@ -92,6 +92,10 @@ class _RepoDetailViewState extends State<_RepoDetailView> {
     if (changed == true && mounted) await _cubit.refresh();
   }
 
+  void _openVideo(RepoModel repo) {
+    context.push('/repo/${repo.id}/video', extra: repo);
+  }
+
   @override
   Widget build(BuildContext context) {
     return BlocConsumer<RepoDetailCubit, RepoDetailState>(
@@ -113,7 +117,11 @@ class _RepoDetailViewState extends State<_RepoDetailView> {
             child: SafeArea(
               child: Column(
                 children: [
-                  _TopBar(repo: repo, onOpenGitHub: repo == null ? null : () => _openGitHub(repo)),
+                  _TopBar(
+                    repo: repo,
+                    onOpenGitHub: repo == null ? null : () => _openGitHub(repo),
+                    onGenerateVideo: repo == null ? null : () => _openVideo(repo),
+                  ),
                   Expanded(child: _buildContent(state)),
                 ],
               ),
@@ -246,6 +254,7 @@ class _RepoDetailViewState extends State<_RepoDetailView> {
           detail: detail,
           busy: state.summaryBusy,
           onGenerate: context.read<RepoDetailCubit>().generateSummary,
+          onGenerateVideo: () => _openVideo(detail.repo),
         );
       case _Section.quickstart:
         return _QuickstartCard(quickstart: detail.quickstart);
@@ -262,8 +271,13 @@ class _RepoDetailViewState extends State<_RepoDetailView> {
 class _TopBar extends StatelessWidget {
   final RepoModel? repo;
   final VoidCallback? onOpenGitHub;
+  final VoidCallback? onGenerateVideo;
 
-  const _TopBar({required this.repo, required this.onOpenGitHub});
+  const _TopBar({
+    required this.repo,
+    required this.onOpenGitHub,
+    required this.onGenerateVideo,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -278,6 +292,16 @@ class _TopBar extends StatelessWidget {
           ),
           const Spacer(),
           if (repo?.isHot ?? false) ...[GlassBadge.hot(), const SizedBox(width: 8)],
+          if (repo != null) ...[
+            GlassIconButton(
+              icon: Icons.movie_creation_outlined,
+              tooltip: 'Tạo video phân tích repo',
+              enableGlow: true,
+              glowColor: AppColors.secondary,
+              onPressed: onGenerateVideo,
+            ),
+            const SizedBox(width: 8),
+          ],
           GlassIconButton(
             icon: Icons.open_in_new_rounded,
             tooltip: 'Mở trên GitHub',
@@ -677,8 +701,14 @@ class _SummaryCard extends StatelessWidget {
   final RepoDetailModel detail;
   final bool busy;
   final VoidCallback onGenerate;
+  final VoidCallback onGenerateVideo;
 
-  const _SummaryCard({required this.detail, required this.busy, required this.onGenerate});
+  const _SummaryCard({
+    required this.detail,
+    required this.busy,
+    required this.onGenerate,
+    required this.onGenerateVideo,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -702,7 +732,7 @@ class _SummaryCard extends StatelessWidget {
           const SizedBox(height: 14),
           const Text('Tóm tắt AI (đọc trong 1 phút)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
-          if (detail.hasSummary)
+          if (detail.hasSummary) ...[
             MarkdownBody(
               data: detail.summary!,
               styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
@@ -712,8 +742,14 @@ class _SummaryCard extends StatelessWidget {
                   color: isDark ? AppColors.darkTextSecondary : AppColors.lightTextSecondary,
                 ),
               ),
-            )
-          else ...[
+            ),
+            const SizedBox(height: 16),
+            GlassButton(
+              text: 'Tạo video phân tích repo',
+              icon: Icons.movie_creation_outlined,
+              onPressed: onGenerateVideo,
+            ),
+          ] else ...[
             Text(
               busy
                   ? 'AI đang đọc README của repo này. Có thể mất tới 2 phút, bạn đừng rời màn hình nhé.'
@@ -725,11 +761,25 @@ class _SummaryCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 16),
-            GlassButton(
-              text: 'Tạo tóm tắt AI',
-              icon: Icons.auto_awesome_rounded,
-              isLoading: busy,
-              onPressed: busy ? null : onGenerate,
+            Row(
+              children: [
+                Expanded(
+                  child: GlassButton(
+                    text: 'Tạo tóm tắt AI',
+                    icon: Icons.auto_awesome_rounded,
+                    isLoading: busy,
+                    onPressed: busy ? null : onGenerate,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: GlassButton(
+                    text: 'Tạo video',
+                    icon: Icons.movie_creation_outlined,
+                    onPressed: onGenerateVideo,
+                  ),
+                ),
+              ],
             ),
           ],
         ],

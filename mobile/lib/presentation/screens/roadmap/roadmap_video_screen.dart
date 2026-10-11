@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:share_plus/share_plus.dart';
@@ -112,7 +113,7 @@ class _Result extends StatelessWidget {
     await SharePlus.instance.share(
       ShareParams(
         title: 'Lộ trình học tập của tôi',
-        text: 'Xem tổng kết Lộ trình học tập Dev Radar của tôi!',
+        text: 'Xem tổng kết Lộ trình học tập Dev Radar AI của tôi!',
         uri: Uri.parse(url),
         sharePositionOrigin: box == null ? null : box.localToGlobal(Offset.zero) & box.size,
       ),
@@ -136,9 +137,9 @@ class _VideoPreviewState extends State<_VideoPreview> {
   @override
   void initState() {
     super.initState();
+    final initialVolume = kIsWeb ? 0.0 : 1.0;
     _controller = VideoPlayerController.networkUrl(Uri.parse(widget.url))
-      // Browsers block autoplay with sound, so start muted; a tap unmutes.
-      ..setVolume(0)
+      ..setVolume(initialVolume)
       ..setLooping(true);
     _controller.initialize().then((_) {
       if (!mounted) return;
@@ -166,6 +167,7 @@ class _VideoPreviewState extends State<_VideoPreview> {
     if (!_ready) {
       return const Center(child: CircularProgressIndicator());
     }
+    final isMuted = _controller.value.volume == 0;
     return GestureDetector(
       onTap: _toggle,
       child: Stack(
@@ -182,16 +184,38 @@ class _VideoPreviewState extends State<_VideoPreview> {
               child: Icon(Icons.play_circle_fill_rounded, size: 64, color: Colors.white70),
             ),
           Positioned(
-            right: 8,
-            bottom: 8,
-            child: IconButton(
-              tooltip: 'Bật/tắt tiếng',
-              onPressed: () => setState(
-                () => _controller.setVolume(_controller.value.volume == 0 ? 1 : 0),
-              ),
-              icon: Icon(
-                _controller.value.volume == 0 ? Icons.volume_off_rounded : Icons.volume_up_rounded,
-                color: Colors.white,
+            right: 12,
+            bottom: 12,
+            child: Material(
+              color: Colors.black.withAlpha(160),
+              borderRadius: BorderRadius.circular(20),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(20),
+                onTap: () => setState(
+                  () => _controller.setVolume(isMuted ? 1.0 : 0.0),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        isMuted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        isMuted ? 'Bật tiếng' : 'Tắt tiếng',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
