@@ -70,7 +70,7 @@ class ApiConstants {
   static const String videos = '$apiV1/videos';
 
   // Timeouts
-  static const Duration connectTimeout = Duration(seconds: 15);
+  static const Duration connectTimeout = Duration(seconds: 30);
   static const Duration receiveTimeout = Duration(seconds: 30); // AI chat answers can be slow
 
   /// For the two calls that block server-side for minutes: generating a summary

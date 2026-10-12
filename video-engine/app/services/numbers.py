@@ -87,7 +87,15 @@ def spell_number(value: int | float) -> str:
     return " ".join(res).strip()
 
 
+def spell_phonetics(text: str) -> str:
+    """Phonetic transcription of brand names and technical terms for Piper TTS."""
+    text = re.sub(r"\bdev[\s_-]*radar[\s_-]*ai\b", "đép ra đa ây ai", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bdev[\s_-]*radar\b", "đép ra đa ây ai", text, flags=re.IGNORECASE)
+    return text
+
+
 def spell_text(text: str) -> str:
+    text = spell_phonetics(text)
     pattern = r"(\d[\d.,]*\d|\d)(\s*)(%)?"
     
     def replacer(match):

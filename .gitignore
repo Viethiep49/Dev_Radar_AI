@@ -1,4 +1,5 @@
 *.pdf
+.agent/
 
 # Env / secrets
 .env
@@ -17,6 +18,9 @@ mobile/.flutter-plugins-dependencies
 mobile/android/.gradle/
 mobile/android/local.properties
 mobile/ios/Pods/
+**/ephemeral/
+**/GeneratedPluginRegistrant.*
+
 
 # Python
 __pycache__/

@@ -7,6 +7,7 @@ import '../../presentation/screens/auth/register_screen.dart';
 import '../../presentation/screens/chat/repo_chat_screen.dart';
 import '../../presentation/screens/collections/collection_detail_screen.dart';
 import '../../presentation/screens/detail/repo_detail_screen.dart';
+import '../../presentation/screens/detail/repo_video_screen.dart';
 import '../../presentation/screens/main/main_navigation_screen.dart';
 import '../../presentation/screens/notes/note_editor_screen.dart';
 import '../../presentation/screens/notifications/notifications_screen.dart';
@@ -69,6 +70,22 @@ class AppRouter {
             redirect: (context, state) =>
                 state.extra is RepoModel ? null : '/repo/${state.pathParameters['id']}',
             pageBuilder: (context, state) => _page(state, RepoChatScreen(repo: state.extra as RepoModel)),
+          ),
+          GoRoute(
+            path: 'video',
+            redirect: (context, state) =>
+                state.extra is RepoModel ? null : '/repo/${state.pathParameters['id']}',
+            pageBuilder: (context, state) {
+              final repo = state.extra as RepoModel;
+              return _page(
+                state,
+                RepoVideoScreen(
+                  repoId: repo.id,
+                  repoName: repo.name,
+                  repoFullName: repo.fullName,
+                ),
+              );
+            },
           ),
         ],
       ),

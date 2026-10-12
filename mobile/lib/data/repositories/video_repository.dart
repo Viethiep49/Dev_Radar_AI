@@ -7,6 +7,9 @@ abstract class VideoRepository {
   /// Renders a summary video of the caller's learning roadmap. Blocks for
   /// 30-60 seconds. Throws a 400 when the roadmap is empty.
   Future<RoadmapVideoModel> createRoadmapVideo();
+
+  /// Renders a detailed analysis video for a specific repo. Blocks for 30-60 seconds.
+  Future<RoadmapVideoModel> createRepoVideo(int repoId);
 }
 
 class VideoRepositoryImpl implements VideoRepository {
@@ -17,4 +20,8 @@ class VideoRepositoryImpl implements VideoRepository {
   @override
   Future<RoadmapVideoModel> createRoadmapVideo() async =>
       RoadmapVideoModel.fromJson(await remoteDataSource.createRoadmapVideo());
+
+  @override
+  Future<RoadmapVideoModel> createRepoVideo(int repoId) async =>
+      RoadmapVideoModel.fromJson(await remoteDataSource.createRepoVideo(repoId));
 }

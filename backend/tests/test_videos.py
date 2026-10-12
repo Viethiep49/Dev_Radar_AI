@@ -166,3 +166,56 @@ def test_get_malformed_job_id_is_404(client, tmp_path, monkeypatch, job_id):
     (tmp_path / f"{job_id}.mp4").write_bytes(b"nope")
 
     assert_error(client.get(f"{URL}/{job_id}"), 404, "NOT_FOUND")
+
+
+def test_post_repo_video_renders_and_returns_relative_url(client, auth_headers, db, engine):
+    engine(rendered)
+    repo = Repo(
+        github_id=9999,
+        full_name="tiangolo/fastapi",
+        owner="tiangolo",
+        name="fastapi",
+        description="FastAPI framework, high performance, easy to learn.",
+        html_url="https://github.com/tiangolo/fastapi",
+        language="Python",
+        stars=75000,
+        forks=6000,
+        topics=["fastapi", "python", "pydantic"],
+        readme="# FastAPI\n\n```bash\npip install fastapi\n```\n",
+    )
+    db.add(repo)
+    db.commit()
+
+    response = client.post(f"{URL}/repos/{repo.id}", headers=auth_headers)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["url"] == f"{URL}/{body['job_id']}"
+    assert body["duration_seconds"] == pytest.approx(12.4)
+    assert body["size_bytes"] == 1024
+
+    saved = db.query(GeneratedVideo).filter_by(job_id=body["job_id"]).one()
+    assert saved.duration_seconds == pytest.approx(12.4)
+
+
+def test_post_repo_video_requires_auth(client, engine):
+    engine(lambda request: httpx.Response(200, json=RESULT))
+    assert client.post(f"{URL}/repos/1").status_code == 401
+
+
+def test_post_repo_video_unknown_repo_is_404(client, auth_headers):
+    assert_error(client.post(f"{URL}/repos/999999", headers=auth_headers), 404, "NOT_FOUND")
+
+
+def test_video_specs_normalize_brand_phonetics():
+    from app.services.video_spec import normalize_narration, build_repo_video_spec
+    assert normalize_narration("Khám phá trên Dev Radar AI") == "Khám phá trên đép ra đa ây ai"
+    assert normalize_narration("Chào mừng đến với Dev Radar") == "Chào mừng đến với đép ra đa ây ai"
+
+    repo = Repo(github_id=1, full_name="user/tool", name="tool", stars=10)
+    spec = build_repo_video_spec("job1", repo)
+    assert "đép ra đa ây ai" in spec["slides"][0]["narration"]
+    assert "đép ra đa ây ai" in spec["slides"][-1]["narration"]
+    assert spec["slides"][-1]["title"] == "Khám phá trên Dev Radar AI"
+
+
